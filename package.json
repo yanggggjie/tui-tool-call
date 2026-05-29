@@ -7,7 +7,6 @@
   },
   "files": [
     "dist/",
-    "scripts/",
     "README.md",
     "LICENSE"
   ],
@@ -15,7 +14,6 @@
     "build": "tsc && chmod +x dist/cli.js",
     "clean": "rm -rf node_modules package-lock.json dist ~/.ttc",
     "dev": "tsc --watch",
-    "postinstall": "node scripts/install.js",
     "prepublishOnly": "npm run build",
     "publish:patch": "npm version patch && npm publish",
     "publish:minor": "npm version minor && npm publish",
@@ -23,9 +21,9 @@
     "start": "node dist/cli.js"
   },
   "dependencies": {
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "@xterm/headless": "^6.0.0",
-    "commander": "^12.0.0",
-    "node-pty": "^1.0.0"
+    "commander": "^12.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

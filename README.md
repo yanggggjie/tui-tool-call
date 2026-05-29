@@ -159,15 +159,13 @@ ttc daemon restart                         # Restart the daemon
 
 ## Troubleshooting
 
-### Automatic Rebuild Fails
+### PTY install fails
 
-The installer automatically detects your platform and uses a prebuilt binary when available. If no compatible prebuild exists, it will automatically rebuild from source (requires build tools).
-
-**Build tools** (only needed if automatic rebuild fails):
+`npm install` downloads a prebuilt PTY binary for your platform (macOS, Windows, Linux glibc/musl). If install falls back to compiling from source, install build tools:
 
 - macOS: `xcode-select --install`
 - Linux: `sudo apt-get install build-essential python3 g++`
-- Windows: Prebuilt binaries available (no build tools needed)
+- Windows: Visual Studio Build Tools (usually not needed — prebuilds are provided)
 
 ## Development
 

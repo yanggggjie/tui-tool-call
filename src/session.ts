@@ -1,12 +1,12 @@
 /**
  * termlink/src/session.ts
  *
- * Wraps a node-pty IPty instance.
+ * Wraps a PTY process (@homebridge/node-pty-prebuilt-multiarch).
  * Uses @xterm/headless as a VT renderer — all PTY output is written into
  * the terminal emulator, and `snapshot()` reads back the rendered screen.
  * This makes ANSI escape sequences, colors, and screen updates transparent.
  */
-import * as pty from "node-pty";
+import * as pty from "@homebridge/node-pty-prebuilt-multiarch";
 import { Terminal } from "@xterm/headless";
 import { SessionInfo } from "./protocol";
 import { extractHighlights, Highlight } from "./highlights";

@@ -7,7 +7,7 @@
 _default:
     @just --list
 
-# Install dependencies (runs postinstall → node-pty setup)
+# Install dependencies
 install:
     npm install
 
