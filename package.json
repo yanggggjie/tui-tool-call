@@ -20,8 +20,7 @@
     "publish:patch": "npm version patch && npm publish",
     "publish:minor": "npm version minor && npm publish",
     "publish:major": "npm version major && npm publish",
-    "start": "node dist/cli.js",
-    "test": "vitest run --exclude 'dist/**'"
+    "start": "node dist/cli.js"
   },
   "dependencies": {
     "@xterm/headless": "^6.0.0",
@@ -30,8 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "typescript": "^5.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

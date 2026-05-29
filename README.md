@@ -187,18 +187,6 @@ ttc done
 ttc kill
 ```
 
-### Integration Tests
-
-A Claude Code skill is included for running the full integration test suite.
-
-Run the following command in Claude Code:
-
-```
-/ttc-integration-test
-```
-
-Claude will execute the test suite in order and then report `PASS / FAIL` for each, with actual screen output on any failure.
-
 ## License
 
 [MIT License](LICENSE)
