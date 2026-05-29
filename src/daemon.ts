@@ -11,8 +11,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { Session } from "./session";
-import { validateSessionName } from "./sessionName";
+import { Session, validateSessionName } from "./session";
 import {
   Request,
   Response,
@@ -174,24 +173,7 @@ async function handleRequest(req: Request): Promise<Response> {
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
       try {
-        session.press(r.key);
-        const snap = await doneSnapshot(session);
-        return screenResponse(session, currentSession!, "press", snap);
-      } catch (e: unknown) {
-        return {
-          type: "error",
-          message: e instanceof Error ? e.message : String(e),
-        };
-      }
-    }
-
-    case "press": {
-      const r = req as PressRequest;
-      const sessionOrError = getCurrentSession();
-      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      try {
-        session.press(r.key);
+        session.press(r.sequence);
         const snap = await doneSnapshot(session);
         return screenResponse(session, currentSession!, "press", snap);
       } catch (e: unknown) {

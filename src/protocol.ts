@@ -38,7 +38,7 @@ export interface TypeRequest {
 
 export interface PressRequest {
   type: "press";
-  key: string;
+  sequence: string;
 }
 
 export interface KillRequest {
