@@ -4,7 +4,7 @@ Test session lifecycle: start, use, info, rename, list, kill.
 
 Before starting: kill any stale daemon.
 ```bash
-tui-use daemon stop 2>/dev/null || true
+ttc daemon stop 2>/dev/null || true
 ```
 
 ---
@@ -14,27 +14,27 @@ tui-use daemon stop 2>/dev/null || true
 **Goal:** Create, identify, and destroy a session.
 
 ```bash
-tui-use start python3
-tui-use wait --text ">>>"
+ttc start temp-work python3
+ttc now -d --text ">>>"
 ```
 
 **Step 1.1** — Verify info shows correct details:
 ```bash
-tui-use info
+ttc info
 ```
 Assert: Output contains `Command: python3`, `Status: running`, `Size: 120x30`
 
 **Step 1.2** — Rename the session:
 ```bash
-tui-use rename "my-python-session"
-tui-use list
+ttc rename "my-python-session"
+ttc list
 ```
 Assert: `list` shows `my-python-session` as label
 
 **Step 1.3** — Kill and verify cleanup:
 ```bash
-tui-use kill
-tui-use list
+ttc kill
+ttc list
 ```
 Assert: `list` shows "No active sessions" or session not in list
 
@@ -45,38 +45,38 @@ Assert: `list` shows "No active sessions" or session not in list
 **Goal:** Manage multiple concurrent sessions.
 
 ```bash
-SID1=$(tui-use start --label "first" python3 2>/dev/null)
-SID2=$(tui-use start --label "second" python3 2>/dev/null)
-tui-use list
+SID1=$(ttc start test-first python3 2>/dev/null)
+SID2=$(ttc start test-second python3 2>/dev/null)
+ttc list
 ```
 
 Note: redirect stderr to /dev/null so daemon startup messages don't pollute the captured session ID.
 
 **Step 2.1** — Verify both sessions exist:
 ```bash
-tui-use list
+ttc list
 ```
 Assert: `list` shows both "first" and "second" labels
 
 **Step 2.2** — Switch between sessions:
 ```bash
-tui-use use $SID1
-tui-use info
+ttc use $SID1
+ttc info
 ```
 Assert: `info` shows `Label: first`
 
 ```bash
-tui-use use $SID2
-tui-use info
+ttc use $SID2
+ttc info
 ```
 Assert: `info` shows `Label: second`
 
 **Step 2.3** — Cleanup:
 ```bash
-tui-use use $SID1
-tui-use kill
-tui-use use $SID2
-tui-use kill
+ttc use $SID1
+ttc kill
+ttc use $SID2
+ttc kill
 ```
 Assert: Both sessions killed
 

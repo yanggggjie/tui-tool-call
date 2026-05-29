@@ -1,4 +1,4 @@
-# Design: tui-use-git-test Skill
+# Design: ttc-git-test Skill
 
 **Date:** 2026-04-08  
 **Status:** Approved
@@ -7,9 +7,9 @@
 
 ## Overview
 
-A new Claude Code skill `tui-use-git-test` that verifies tui-use can drive real git workflows involving interactive rebase and conflict resolution entirely through the terminal — no external shell file manipulation.
+A new Claude Code skill `ttc-git-test` that verifies ttc can drive real git workflows involving interactive rebase and conflict resolution entirely through the terminal — no external shell file manipulation.
 
-The skill follows the same structure and conventions as the existing `tui-use-vim-test` skill.
+The skill follows the same structure and conventions as the existing `ttc-vim-test` skill.
 
 ---
 
@@ -22,7 +22,7 @@ Single test suite for now: `rebase-conflict`. Future git scenarios (merge confli
 ## Skill Structure
 
 ```
-.claude/skills/tui-use-git-test/
+.claude/skills/ttc-git-test/
 ├── SKILL.md
 └── tests/
     └── rebase-conflict.md
@@ -30,11 +30,11 @@ Single test suite for now: `rebase-conflict`. Future git scenarios (merge confli
 
 ### SKILL.md
 
-Entry point for the skill. Describes purpose, usage, and the table of available test suites. Mirrors the format of `tui-use-vim-test/SKILL.md`.
+Entry point for the skill. Describes purpose, usage, and the table of available test suites. Mirrors the format of `ttc-vim-test/SKILL.md`.
 
 ### tests/rebase-conflict.md
 
-Single test spec. Written entirely in English. Uses the same format as `tui-use-vim-test/tests/edit.md`: bash code blocks, Assert comments, and Cleanup sections.
+Single test spec. Written entirely in English. Uses the same format as `ttc-vim-test/tests/edit.md`: bash code blocks, Assert comments, and Cleanup sections.
 
 ---
 
@@ -59,7 +59,7 @@ Running `git rebase -i main` from `feature` causes a conflict on line 1 of `gree
 
 ## Test Flow
 
-All steps are driven entirely by tui-use. No `sed`, `echo >`, or other shell file edits after the repo is set up.
+All steps are driven entirely by ttc. No `sed`, `echo >`, or other shell file edits after the repo is set up.
 
 ### Setup
 - Kill any stale daemon
@@ -69,18 +69,18 @@ All steps are driven entirely by tui-use. No `sed`, `echo >`, or other shell fil
 
 ### Scenario 1: interactive rebase todo
 
-1. `tui-use start git rebase -i main` — vim opens the rebase todo list
+1. `ttc start git-work git rebase -i main` — vim opens the rebase todo list
 2. Wait for vim to show the todo (`pick`)
 3. `:wq` to accept the default (no reordering needed)
 
 ### Scenario 2: conflict arises
 
-4. `tui-use wait --text "CONFLICT"` — git reports the conflict in the terminal
+4. `ttc wait --text "CONFLICT"` — git reports the conflict in the terminal
 5. Assert: screen contains `"CONFLICT"` and `"greeting.txt"`
 
 ### Scenario 3: resolve conflict in vim
 
-6. `tui-use start vim greeting.txt` — open the conflicted file
+6. `ttc start temp-work vim greeting.txt` — open the conflicted file
 7. Wait for vim to show conflict markers (`<<<<<<<`)
 8. Use vim to delete conflict markers and keep the desired line (`"hello from feature"`)
    - Navigate to the conflict block
@@ -90,9 +90,9 @@ All steps are driven entirely by tui-use. No `sed`, `echo >`, or other shell fil
 
 ### Scenario 4: complete the rebase
 
-9. `tui-use start git add greeting.txt`
-10. `tui-use start git rebase --continue` — vim may open for commit message; `:wq` to accept
-11. `tui-use wait --text "Successfully rebased"`
+9. `ttc start git-work git add greeting.txt`
+10. `ttc start git-work git rebase --continue` — vim may open for commit message; `:wq` to accept
+11. `ttc wait --text "Successfully rebased"`
 12. Assert: exit_code is `0`
 
 ### Scenario 5: verify result
@@ -101,14 +101,14 @@ All steps are driven entirely by tui-use. No `sed`, `echo >`, or other shell fil
 14. Assert: file contains `"hello from feature"`, no conflict markers remain
 
 ### Cleanup
-- `tui-use kill` if any session still running
+- `ttc kill` if any session still running
 - `rm -rf /tmp/tui-git-test-repo/`
 
 ---
 
 ## Reporting Format
 
-Same as `tui-use-vim-test`:
+Same as `ttc-vim-test`:
 
 ```
 rebase-conflict:
@@ -121,7 +121,7 @@ rebase-conflict:
 ## Key Constraints
 
 - All test specs written in **English**
-- No shell file manipulation after setup (conflict resolution must go through vim via tui-use)
+- No shell file manipulation after setup (conflict resolution must go through vim via ttc)
 - `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` must be set to `vim` before starting
 - Git repo must have `user.email` and `user.name` configured locally to avoid commit failures
 - Each scenario builds on the previous — the suite is sequential, not independent

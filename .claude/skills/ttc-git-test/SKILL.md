@@ -1,17 +1,17 @@
 ---
-name: tui-use-git-test
-description: Use when you need to verify tui-use's ability to drive git workflows — interactive rebase, conflict resolution with vim, and verifying repository state.
+name: ttc-git-test
+description: Use when you need to verify ttc's ability to drive git workflows — interactive rebase, conflict resolution with vim, and verifying repository state.
 ---
 
-# tui-use git Tests
+# ttc git Tests
 
-Run tests to verify tui-use can drive real git workflows involving interactive rebase and conflict resolution.
+Run tests to verify ttc can drive real git workflows involving interactive rebase and conflict resolution.
 
 ## Usage
 
 ```
-/tui-use-git-test              # Run all test suites
-/tui-use-git-test <suite>      # Run specific test suite
+/ttc-git-test              # Run all test suites
+/ttc-git-test <suite>      # Run specific test suite
 ```
 
 ## Available Test Suites

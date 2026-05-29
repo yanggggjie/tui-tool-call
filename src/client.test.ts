@@ -4,7 +4,7 @@ describe("Platform-Aware IPC", () => {
   it("daemon listens on TCP port 7654 on Windows (verified via code)", () => {
     // This test verifies the Windows platform handling is present in the code.
     // On Windows: server.listen(DAEMON_PORT) where DAEMON_PORT = 7654
-    // On Unix: server.listen(SOCKET_PATH) where SOCKET_PATH = ~/.tui-use/daemon.sock
+    // On Unix: server.listen(SOCKET_PATH) where SOCKET_PATH = ~/.ttc/daemon.sock
     const DAEMON_PORT = 7654;
     expect(DAEMON_PORT).toBe(7654);
   });
@@ -21,7 +21,7 @@ describe("Platform-Aware IPC", () => {
   it("respects platform-specific connection behavior", () => {
     // The code branches based on process.platform:
     // - win32: uses TCP port 7654
-    // - others (linux, darwin, etc): uses Unix socket at ~/.tui-use/daemon.sock
+    // - others (linux, darwin, etc): uses Unix socket at ~/.ttc/daemon.sock
     const isWindows = process.platform === "win32";
     const isUnix = !isWindows;
 

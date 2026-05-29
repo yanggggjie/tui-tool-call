@@ -16,7 +16,7 @@ const nodePtyDir = path.join(__dirname, '..', 'node_modules', 'node-pty');
 function testNodePty() {
   // Run in a subprocess so the native addon loads fresh after any file changes.
   // Use a temp file to avoid shell quoting issues with paths.
-  const tmpScript = path.join(os.tmpdir(), 'tui-use-test-pty.js');
+  const tmpScript = path.join(os.tmpdir(), 'ttc-test-pty.js');
   try {
     fs.writeFileSync(tmpScript, `
       const pty = require(${JSON.stringify(nodePtyDir)});
@@ -35,7 +35,7 @@ function testNodePty() {
 function installPrebuild() {
   const prebuildPath = path.join(nodePtyDir, 'prebuilds', platformKey, 'pty.node');
   if (!fs.existsSync(prebuildPath)) {
-    console.log(`[tui-use] No prebuild for ${platformKey}`);
+    console.log(`[ttc] No prebuild for ${platformKey}`);
     return false;
   }
 
@@ -52,16 +52,16 @@ function installPrebuild() {
         fs.chmodSync(path.join(targetDir, file), 0o755);
       }
     }
-    console.log(`[tui-use] Installed prebuilt binary for ${platformKey}`);
+    console.log(`[ttc] Installed prebuilt binary for ${platformKey}`);
     return true;
   } catch (err) {
-    console.error(`[tui-use] Failed to install prebuild: ${err.message}`);
+    console.error(`[ttc] Failed to install prebuild: ${err.message}`);
     return false;
   }
 }
 
 function buildFromSource() {
-  console.log('[tui-use] Building node-pty from source (this may take a minute)...');
+  console.log('[ttc] Building node-pty from source (this may take a minute)...');
   try {
     execSync('npx node-gyp rebuild', { stdio: 'inherit', cwd: nodePtyDir });
     return true;
@@ -72,29 +72,29 @@ function buildFromSource() {
 
 function exitWithBuildError() {
   const fixes = {
-    darwin: '  xcode-select --install\n  npm install -g tui-use',
-    linux:  '  sudo apt-get install build-essential python3 g++\n  npm install -g tui-use',
+    darwin: '  xcode-select --install\n  npm install -g tui-tool-call',
+    linux:  '  sudo apt-get install build-essential python3 g++\n  npm install -g tui-tool-call',
   };
-  const fix = fixes[platform] ?? '  npm install -g tui-use';
-  console.error(`[tui-use] node-pty native binding failed to load.\n\n[tui-use] To fix:\n${fix}`);
+  const fix = fixes[platform] ?? '  npm install -g tui-tool-call';
+  console.error(`[ttc] node-pty native binding failed to load.\n\n[ttc] To fix:\n${fix}`);
   process.exit(1);
 }
 
 function main() {
-  console.log(`[tui-use] Platform: ${platformKey}`);
+  console.log(`[ttc] Platform: ${platformKey}`);
 
   if (testNodePty()) {
-    console.log('[tui-use] node-pty is ready');
+    console.log('[ttc] node-pty is ready');
     return;
   }
 
   if (installPrebuild() && testNodePty()) {
-    console.log('[tui-use] Prebuilt binary works');
+    console.log('[ttc] Prebuilt binary works');
     return;
   }
 
   if (buildFromSource() && testNodePty()) {
-    console.log('[tui-use] node-pty built successfully');
+    console.log('[ttc] node-pty built successfully');
     return;
   }
 

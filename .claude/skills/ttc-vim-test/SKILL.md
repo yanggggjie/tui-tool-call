@@ -1,17 +1,17 @@
 ---
-name: tui-use-vim-test
-description: Use when you need to verify tui-use's ability to drive vim — opening files, editing text, navigation, undo/redo, search & replace, and saving.
+name: ttc-vim-test
+description: Use when you need to verify ttc's ability to drive vim — opening files, editing text, navigation, undo/redo, search & replace, and saving.
 ---
 
-# tui-use vim Tests
+# ttc vim Tests
 
-Run tests to verify tui-use can drive vim for real editing tasks.
+Run tests to verify ttc can drive vim for real editing tasks.
 
 ## Usage
 
 ```
-/tui-use-vim-test              # Run all test suites
-/tui-use-vim-test <suite>      # Run specific test suite
+/ttc-vim-test              # Run all test suites
+/ttc-vim-test <suite>      # Run specific test suite
 ```
 
 ## Available Test Suites

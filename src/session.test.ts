@@ -59,7 +59,7 @@ describe("Session", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tui-use-test-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ttc-test-"));
     session = new Session("test-session", "echo hello", {
       cwd: tempDir,
       cols: 80,
@@ -78,60 +78,6 @@ describe("Session", () => {
     } catch (e) {
       // ignore cleanup errors
     }
-  });
-
-  describe("find", () => {
-    it("finds text matching a pattern", async () => {
-      // Wait a bit for the session to start
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const matches = session.find("hello");
-      expect(matches.length).toBeGreaterThan(0);
-      expect(matches[0].text).toBe("hello");
-    });
-
-    it("returns empty array when no match", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const matches = session.find("xyz123");
-      expect(matches).toHaveLength(0);
-    });
-
-    it("supports regex patterns", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const matches = session.find("h.llo");
-      expect(matches.length).toBeGreaterThan(0);
-    });
-
-    it("only finds text in the current viewport, not scrollback", async () => {
-      // Print more lines than the terminal height (24 rows) so "hello" scrolls off screen
-      const session2 = new Session("find-viewport-test", "bash -c 'echo hello; seq 1 50'", {
-        cwd: tempDir,
-        cols: 80,
-        rows: 24,
-      });
-      // Wait for output to finish
-      await session2.wait(3000, "^50$");
-
-      // "hello" has scrolled off the viewport — find should NOT return it
-      const matches = session2.find("hello");
-      expect(matches).toHaveLength(0);
-
-      session2.kill();
-    });
-
-    it("line numbers returned by find match snapshot line numbers", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const matches = session.find("hello");
-      expect(matches.length).toBeGreaterThan(0);
-
-      // The line number from find should correspond to the same line in snapshot
-      const snap = session.snapshot();
-      const lineFromFind = matches[0].line;
-      expect(snap.lines[lineFromFind]).toContain("hello");
-    });
   });
 
   describe("rename", () => {
@@ -154,16 +100,16 @@ describe("Session", () => {
   });
 
   describe("scroll", () => {
-    it("returns true for successful scroll", () => {
-      // scroll should succeed even with minimal content
-      expect(session.scroll(10)).toBe(true);
-      expect(session.scroll(-10)).toBe(true);
+    it("scrolls without throwing", () => {
+      expect(() => session.scrollLines(10)).not.toThrow();
+      expect(() => session.scrollLines(-10)).not.toThrow();
     });
 
-    it("returns true when scrolling at buffer boundaries", () => {
-      // Scrolling beyond buffer bounds should not throw
-      expect(session.scroll(1000)).toBe(true);
-      expect(session.scroll(-1000)).toBe(true);
+    it("scrolls at buffer boundaries without throwing", () => {
+      expect(() => session.scrollUp(1000)).not.toThrow();
+      expect(() => session.scrollDown(1000)).not.toThrow();
+      expect(() => session.scrollTop()).not.toThrow();
+      expect(() => session.scrollBottom()).not.toThrow();
     });
   });
 
@@ -221,7 +167,7 @@ describe("Session.press", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tui-use-press-test-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ttc-press-test-"));
     session = new Session("press-test", "cat", { cwd: tempDir, cols: 80, rows: 24 });
   });
 
@@ -232,7 +178,7 @@ describe("Session.press", () => {
 
   it("throws a descriptive error for unknown key names", () => {
     expect(() => session.press("ctrl+r_typo")).toThrowError(/Unknown key/);
-    expect(() => session.press("ctrl+r_typo")).toThrowError(/tui-use keys/);
+    expect(() => session.press("ctrl+r_typo")).toThrowError(/ttc keys/);
   });
 
   it("throws for completely unknown keys", () => {

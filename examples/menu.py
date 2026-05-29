@@ -8,7 +8,7 @@ selected = 0
 def render(selected):
     for i, opt in enumerate(options):
         if i == selected:
-            # Inverse color (reverse video) — this is what tui-use currently strips
+            # Inverse color (reverse video) — this is what ttc currently strips
             print(f"\033[7m  {opt}  \033[0m")
         else:
             print(f"  {opt}  ")

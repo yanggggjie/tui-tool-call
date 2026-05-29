@@ -1,6 +1,6 @@
 # Test: git rebase -i Conflict Resolution
 
-Test that tui-use can drive a full interactive rebase workflow: open the todo
+Test that ttc can drive a full interactive rebase workflow: open the todo
 list in vim, accept it, wait for a conflict, resolve the conflict in vim, complete
 the rebase, and verify the result.
 
@@ -9,7 +9,7 @@ system. This spec uses `master`. Adjust if your git uses `main`.
 
 Before starting: kill any stale daemon and remove temp repo.
 ```bash
-tui-use daemon stop 2>/dev/null || true
+ttc daemon stop 2>/dev/null || true
 rm -rf /tmp/tui-git-test-repo
 ```
 
@@ -51,17 +51,17 @@ Assert: `git log --oneline` on `feature` shows commits C and A; `master` shows B
 **Goal:** Launch `git rebase -i master`, vim opens the rebase todo. Accept it as-is with `:wq`.
 
 ```bash
-tui-use start --cwd /tmp/tui-git-test-repo "GIT_EDITOR=vim GIT_SEQUENCE_EDITOR=vim git rebase -i master"
-tui-use wait --text "pick"
+ttc start git-work --cwd /tmp/tui-git-test-repo "GIT_EDITOR=vim GIT_SEQUENCE_EDITOR=vim git rebase -i master"
+ttc now -d --text "pick"
 ```
 
 Assert: vim is open and the screen contains `pick` (the rebase todo entry for commit C).
 
 **Step 1.1** — Accept the todo list:
 ```bash
-tui-use type ":wq"
-tui-use press enter
-tui-use wait 500
+ttc type ":wq"
+ttc press enter
+ttc now -d 500
 ```
 
 Assert: vim closes and git begins applying commits.
@@ -74,8 +74,8 @@ Assert: vim closes and git begins applying commits.
 
 **Step 2.1** — Wait for conflict notice:
 ```bash
-tui-use wait --text "greeting.txt"
-tui-use snapshot --format json | jq -r '.screen'
+ttc now -d --text "greeting.txt"
+ttc now
 ```
 
 Assert: screen contains `greeting.txt` (git conflict output mentions the file regardless of locale).
@@ -100,42 +100,42 @@ then go to line 2 (the `>>>` marker) and delete it. Line 1 (`hello from feature`
 
 **Step 3.1** — Open the conflicted file:
 ```bash
-tui-use start vim /tmp/tui-git-test-repo/greeting.txt
-tui-use wait --text "<<<<<<<"
+ttc start temp-work vim /tmp/tui-git-test-repo/greeting.txt
+ttc now -d --text "<<<<<<<"
 ```
 
 Assert: vim is open and conflict markers (`<<<<<<<`) are visible on screen.
 
 **Step 3.2** — Delete the first 3 lines (`<<<<<<< HEAD`, `hello from master`, `=======`):
 ```bash
-tui-use type "1G"
-tui-use wait 200
-tui-use type "dd"
-tui-use wait 200
-tui-use type "dd"
-tui-use wait 200
-tui-use type "dd"
-tui-use wait 200
+ttc type "1G"
+ttc now -d 200
+ttc type "dd"
+ttc now -d 200
+ttc type "dd"
+ttc now -d 200
+ttc type "dd"
+ttc now -d 200
 ```
 
 Assert: `hello from feature` is now on line 1.
 
 **Step 3.3** — Delete the `>>>>>>> ...` closing marker (now line 2):
 ```bash
-tui-use type "2G"
-tui-use wait 200
-tui-use type "dd"
-tui-use wait 200
-tui-use snapshot --format json | jq -r '.screen'
+ttc type "2G"
+ttc now -d 200
+ttc type "dd"
+ttc now -d 200
+ttc now
 ```
 
 Assert: only `hello from feature` remains on screen, no conflict markers visible.
 
 **Step 3.4** — Save and exit vim:
 ```bash
-tui-use type ":wq"
-tui-use press enter
-tui-use wait --format json
+ttc type ":wq"
+ttc press enter
+ttc now -d
 ```
 
 Assert: status is `exited`, exit_code is `0`.
@@ -149,27 +149,27 @@ message; accept it with `:wq`.
 
 **Step 4.1** — Stage the resolved file:
 ```bash
-tui-use start --cwd /tmp/tui-git-test-repo git add greeting.txt
-tui-use wait --format json
+ttc start git-work --cwd /tmp/tui-git-test-repo git add greeting.txt
+ttc now -d
 ```
 
 Assert: exit_code is `0`.
 
 **Step 4.2** — Continue the rebase (vim will open for commit message):
 ```bash
-tui-use start --cwd /tmp/tui-git-test-repo "GIT_EDITOR=vim git rebase --continue"
-tui-use wait --text "greet from feature"
-tui-use snapshot --format json | jq -r '.screen'
+ttc start git-work --cwd /tmp/tui-git-test-repo "GIT_EDITOR=vim git rebase --continue"
+ttc now -d --text "greet from feature"
+ttc now
 ```
 
 Assert: vim is open showing the commit message buffer (contains "C: greet from feature").
 
 **Step 4.3** — Accept the commit message:
 ```bash
-tui-use type ":wq"
-tui-use press enter
-tui-use wait 1000
-tui-use snapshot --format json | jq -r '.screen'
+ttc type ":wq"
+ttc press enter
+ttc now -d 1000
+ttc now
 ```
 
 Assert: session has exited, screen contains confirmation that rebase succeeded
@@ -197,7 +197,7 @@ Assert: log shows 3 commits (A, B on master, C rebased on top), no merge commit.
 
 **Cleanup:**
 ```bash
-tui-use kill 2>/dev/null || true
-tui-use daemon stop 2>/dev/null || true
+ttc kill 2>/dev/null || true
+ttc daemon stop 2>/dev/null || true
 rm -rf /tmp/tui-git-test-repo
 ```

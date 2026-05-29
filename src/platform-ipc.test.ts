@@ -5,7 +5,7 @@ import * as path from "path";
 import * as fs from "fs";
 
 const DAEMON_PORT = 7654;
-const SOCKET_PATH = path.join(os.homedir(), ".tui-use", "daemon.sock");
+const SOCKET_PATH = path.join(os.homedir(), ".ttc", "daemon.sock");
 
 describe("Platform-Aware IPC Integration", () => {
   it("Windows uses TCP port instead of Unix socket", () => {
@@ -16,7 +16,7 @@ describe("Platform-Aware IPC Integration", () => {
 
   it("Unix socket path is defined for non-Windows platforms", () => {
     // Verify socket path follows convention
-    expect(SOCKET_PATH).toContain(".tui-use");
+    expect(SOCKET_PATH).toContain(".ttc");
     expect(SOCKET_PATH).toContain("daemon.sock");
 
     // On Unix-like systems, this path should be in home directory
@@ -89,7 +89,7 @@ describe("Platform-Aware IPC Integration", () => {
     // JSON request + "\n"
     // Verify this is a valid approach for both transports
 
-    const sampleMessage = { type: "snapshot" };
+    const sampleMessage = { type: "screen" };
     const encoded = JSON.stringify(sampleMessage) + "\n";
 
     // Both TCP and Unix sockets handle text-based line-delimited format

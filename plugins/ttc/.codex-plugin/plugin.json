@@ -1,13 +1,13 @@
 {
-  "name": "tui-use",
+  "name": "ttc",
   "version": "0.3.0",
   "description": "TUI automation for AI agents - interact with REPLs, interactive installers, and TUI applications",
   "author": {
     "name": "onesuper",
     "email": "onsuper.cheng@gmail.com"
   },
-  "homepage": "https://github.com/onesuper/tui-use",
-  "repository": "https://github.com/onesuper/tui-use",
+  "homepage": "https://github.com/onesuper/tui-tool-call",
+  "repository": "https://github.com/onesuper/tui-tool-call",
   "license": "MIT",
   "keywords": [
     "terminal",
@@ -20,20 +20,20 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "tui-use",
+    "displayName": "ttc",
     "shortDescription": "Operate REPLs, installers, and TUI apps from Codex.",
-    "longDescription": "Use tui-use to start an interactive terminal program in a PTY, observe clean screen snapshots, send keystrokes, and clean up the session when finished.",
+    "longDescription": "Use ttc to start an interactive terminal program in a PTY, observe clean screen snapshots, send keystrokes, and clean up the session when finished.",
     "developerName": "onesuper",
     "category": "Coding",
     "capabilities": [
       "Interactive",
       "Write"
     ],
-    "websiteURL": "https://github.com/onesuper/tui-use",
+    "websiteURL": "https://github.com/onesuper/tui-tool-call",
     "defaultPrompt": [
-      "Use tui-use to interact with an interactive installer.",
-      "Use tui-use to drive a REPL and inspect the terminal snapshot.",
-      "Use tui-use to navigate a TUI program."
+      "Use ttc to interact with an interactive installer.",
+      "Use ttc to drive a REPL and inspect the terminal snapshot.",
+      "Use ttc to navigate a TUI program."
     ],
     "brandColor": "#0F766E"
   }

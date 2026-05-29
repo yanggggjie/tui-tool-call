@@ -4,7 +4,7 @@ Test line jumping, deleting lines, undo, and redo.
 
 Before starting: prepare a test file and kill any stale daemon.
 ```bash
-tui-use daemon stop 2>/dev/null || true
+ttc daemon stop 2>/dev/null || true
 printf "line one\nline two\nline three\n" > /tmp/tui-vim-nav-test.txt
 ```
 
@@ -15,17 +15,17 @@ printf "line one\nline two\nline three\n" > /tmp/tui-vim-nav-test.txt
 **Goal:** Jump to a specific line number.
 
 ```bash
-tui-use start vim /tmp/tui-vim-nav-test.txt
-tui-use wait --text "tui-vim-nav-test"
+ttc start temp-work vim /tmp/tui-vim-nav-test.txt
+ttc now -d --text "tui-vim-nav-test"
 ```
 
 **Step 1.1** — Jump to line 2:
 ```bash
-tui-use type "2G"
-tui-use wait 300
-tui-use snapshot --format json | jq -r '.cursor'
+ttc type "2G"
+ttc now -d 300
+ttc now
 ```
-Assert: cursor y is `1` (0-indexed line 2)
+Assert: screen highlights or shows "line two" as the current line (line 2 selected)
 
 ---
 
@@ -35,35 +35,35 @@ Assert: cursor y is `1` (0-indexed line 2)
 
 **Step 2.1** — Delete line 1:
 ```bash
-tui-use type "1G"
-tui-use wait 300
-tui-use type "dd"
-tui-use wait 300
-tui-use snapshot --format json | jq -r '.screen'
+ttc type "1G"
+ttc now -d 300
+ttc type "dd"
+ttc now -d 300
+ttc now
 ```
 Assert: "line one" is no longer on screen
 
 **Step 2.2** — Undo:
 ```bash
-tui-use type "u"
-tui-use wait 300
-tui-use snapshot --format json | jq -r '.screen'
+ttc type "u"
+ttc now -d 300
+ttc now
 ```
 Assert: "line one" is back on screen
 
 **Step 2.3** — Redo with ctrl+r:
 ```bash
-tui-use press ctrl+r
-tui-use wait 300
-tui-use snapshot --format json | jq -r '.screen'
+ttc press ctrl+r
+ttc now -d 300
+ttc now
 ```
 Assert: "line one" is gone again
 
 **Cleanup:**
 ```bash
-tui-use type ":q!"
-tui-use press enter
-tui-use wait
-tui-use kill 2>/dev/null || true
+ttc type ":q!"
+ttc press enter
+ttc now -d
+ttc kill 2>/dev/null || true
 rm -f /tmp/tui-vim-nav-test.txt
 ```

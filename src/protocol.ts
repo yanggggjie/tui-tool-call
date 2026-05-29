@@ -1,58 +1,41 @@
 /**
- * termlink/src/protocol.ts
- *
- * IPC message types for CLI ↔ daemon communication over Unix socket.
- * All messages are newline-delimited JSON.
+ * ttc protocol — CLI ↔ daemon IPC (newline-delimited JSON)
  */
 
 // ---- Requests ----
 
 export type Request =
   | StartRequest
-  | SnapshotRequest
-  | WaitRequest
+  | ScreenRequest
   | TypeRequest
   | PressRequest
   | KillRequest
   | ListRequest
   | UseRequest
-  | PasteRequest
-  | FindRequest
   | ScrollRequest
   | InfoRequest
   | RenameRequest;
 
 export interface StartRequest {
   type: "start";
+  session_name: string;
   command: string;
   cwd?: string;
-  label?: string;
   cols?: number;
   rows?: number;
 }
 
-export type ScreenFormat = "text" | "lines" | "numbered" | "pretty";
-
-export interface SnapshotRequest {
-  type: "snapshot";
-  color?: boolean;       // when true, lines contain ANSI escape sequences
+/** now: done=false, done: done=true */
+export interface ScreenRequest {
+  type: "screen";
+  done: boolean;
 }
 
-export interface WaitRequest {
-  type: "wait";
-  timeout_ms?: number;   // default 3000
-  text?: string;         // substring or regex — block until screen contains text
-  debounce_ms?: number;  // idle time after last change before resolving (default 100ms)
-  color?: boolean;       // when true, lines contain ANSI escape sequences
-}
-
-/** Send literal text to the PTY. Supports \n \r \t escape sequences. */
 export interface TypeRequest {
   type: "type";
   input: string;
 }
 
-/** Press a named key (must exist in KEY_MAP, e.g. "ctrl+r", "enter", "escape"). */
 export interface PressRequest {
   type: "press";
   key: string;
@@ -71,19 +54,9 @@ export interface UseRequest {
   session_id: string;
 }
 
-export interface PasteRequest {
-  type: "paste";
-  text: string;
-}
-
-export interface FindRequest {
-  type: "find";
-  pattern: string;
-}
-
 export interface ScrollRequest {
   type: "scroll";
-  lines: number;  // positive = down, negative = up
+  direction: "up" | "down" | "top" | "bottom";
 }
 
 export interface InfoRequest {
@@ -100,14 +73,9 @@ export interface RenameRequest {
 export type Response =
   | StartResponse
   | ScreenResponse
-  | TypeResponse
-  | PressResponse
   | KillResponse
   | ListResponse
   | UseResponse
-  | PasteResponse
-  | FindResponse
-  | ScrollResponse
   | InfoResponse
   | RenameResponse
   | ErrorResponse;
@@ -117,35 +85,23 @@ export interface StartResponse {
   session_id: string;
 }
 
-/** Returned by both `snapshot` and `wait` */
 export interface ScreenResponse {
-  type: "snapshot" | "wait";
+  type: "screen" | "type" | "press" | "scroll";
   session_id: string;
-  lines: string[];                  // raw screen lines, trailing empty lines removed
-  cursor: { x: number; y: number };
-  changed: boolean;                // true if screen changed since last snapshot/wait
+  lines: string[];
+  changed: boolean;
   status: "running" | "exited";
   exit_code: number | null;
-  title: string;                   // OSC 0/2 window title set by the process
-  is_fullscreen: boolean;          // true when app is using the alternate buffer
-  cols: number;                    // terminal width (PTY cols)
-  rows: number;                    // terminal height (PTY rows)
-  highlights: Array<{              // inverse-video spans (selected items, highlights)
+  title: string;
+  is_fullscreen: boolean;
+  cols: number;
+  rows: number;
+  highlights: Array<{
     line: number;
     col_start: number;
     col_end: number;
     text: string;
   }>;
-}
-
-export interface TypeResponse {
-  type: "type";
-  ok: boolean;
-}
-
-export interface PressResponse {
-  type: "press";
-  ok: boolean;
 }
 
 export interface KillResponse {
@@ -156,7 +112,7 @@ export interface KillResponse {
 export interface ListResponse {
   type: "list";
   sessions: SessionInfo[];
-  current?: string;  // current window session_id
+  current?: string;
 }
 
 export interface UseResponse {
@@ -172,27 +128,6 @@ export interface SessionInfo {
   status: "running" | "exited";
   exit_code: number | null;
   start_time: number;
-}
-
-export interface PasteResponse {
-  type: "paste";
-  ok: boolean;
-}
-
-export interface FindResponse {
-  type: "find";
-  matches: Array<{
-    line: number;
-    col_start: number;
-    col_end: number;
-    text: string;
-  }>;
-}
-
-export interface ScrollResponse {
-  type: "scroll";
-  lines: number;
-  ok: boolean;
 }
 
 export interface InfoResponse {

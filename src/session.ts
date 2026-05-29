@@ -4,7 +4,7 @@
  * Wraps a node-pty IPty instance.
  * Uses @xterm/headless as a VT renderer — all PTY output is written into
  * the terminal emulator, and `snapshot()` reads back the rendered screen.
- * This makes ANSI escape sequences, colors, and cursor movement transparent.
+ * This makes ANSI escape sequences, colors, and screen updates transparent.
  */
 import * as pty from "node-pty";
 import { Terminal } from "@xterm/headless";
@@ -283,18 +283,18 @@ export class Session {
     if (mapped === undefined) {
       const supported = Object.keys(KEY_MAP).join(", ");
       throw new Error(
-        `Unknown key: "${key}". Run \`tui-use keys\` to see all supported key names.\nSupported keys: ${supported}`
+        `Unknown key: "${key}". Run \`ttc keys\` to see all supported key names.\nSupported keys: ${supported}`
       );
     }
     this.ptyProcess.write(mapped);
   }
 
   /**
-   * Return the current rendered screen as raw lines + cursor.
+   * Return the current rendered screen as raw lines.
    * Trailing empty lines and per-line trailing spaces are removed.
    * Updates lastSnapshot for change detection.
    */
-  snapshot(options?: { color?: boolean }): { lines: string[]; cursor: { x: number; y: number }; changed: boolean; highlights: Highlight[]; title: string; is_fullscreen: boolean } {
+  snapshot(options?: { color?: boolean }): { lines: string[]; changed: boolean; highlights: Highlight[]; title: string; is_fullscreen: boolean } {
     const buf = this.terminal.buffer.active;
     const useColor = options?.color ?? false;
     const plainLines: string[] = [];
@@ -336,7 +336,6 @@ export class Session {
     const highlights = extractHighlights(buf, this.terminal.rows, startY);
     return {
       lines,
-      cursor: { x: buf.cursorX, y: buf.cursorY },
       changed,
       highlights,
       title: this._title,
@@ -353,7 +352,7 @@ export class Session {
     text?: string,
     debounceMs: number = 100,
     options?: { color?: boolean }
-  ): Promise<{ lines: string[]; cursor: { x: number; y: number }; changed: boolean; highlights: ReturnType<typeof extractHighlights>; title: string; is_fullscreen: boolean }> {
+  ): Promise<{ lines: string[]; changed: boolean; highlights: ReturnType<typeof extractHighlights>; title: string; is_fullscreen: boolean }> {
     const beforeScreen = this.lastSnapshot;
     const beforeTitle = this._title;
     const beforeFullscreen = this._isFullscreen;
@@ -431,46 +430,38 @@ export class Session {
     };
   }
 
-  /** Find text pattern in the current screen */
-  find(pattern: string): Array<{ line: number; col_start: number; col_end: number; text: string }> {
-    const matches: Array<{ line: number; col_start: number; col_end: number; text: string }> = [];
-    const buf = this.terminal.buffer.active;
-    let regex: RegExp;
-    try {
-      regex = new RegExp(pattern);
-    } catch {
-      return matches;
-    }
-
-    const startY = buf.viewportY;
-    for (let i = 0; i < this.terminal.rows; i++) {
-      const line = buf.getLine(startY + i);
-      if (line) {
-        const lineText = line.translateToString(true);
-        const match = regex.exec(lineText);
-        if (match) {
-          matches.push({
-            line: i,
-            col_start: match.index,
-            col_end: match.index + match[0].length,
-            text: match[0],
-          });
-        }
-      }
-    }
-    return matches;
+  /** Scroll viewport by lines. Negative = up, positive = down. */
+  scrollLines(lines: number): void {
+    this.terminal.scrollLines(lines);
   }
 
-  /** Scroll the terminal buffer (for non-fullscreen apps like less/cat) */
-  scroll(lines: number): boolean {
-    // Scroll the viewport to view buffer history
-    // positive lines = scroll down (view newer content)
-    // negative lines = scroll up (view older content)
-    try {
-      this.terminal.scrollLines(lines);
-      return true;
-    } catch {
-      return false;
+  scrollUp(lines?: number): void {
+    const n = lines ?? this.terminal.rows;
+    this.scrollLines(-n);
+  }
+
+  scrollDown(lines?: number): void {
+    const n = lines ?? this.terminal.rows;
+    this.scrollLines(n);
+  }
+
+  scrollTop(): void {
+    const buf = this.terminal.buffer.active;
+    this.scrollLines(-buf.viewportY);
+  }
+
+  scrollBottom(): void {
+    const buf = this.terminal.buffer.active;
+    const target = Math.max(0, buf.length - this.terminal.rows);
+    this.scrollLines(target - buf.viewportY);
+  }
+
+  scroll(direction: "up" | "down" | "top" | "bottom"): void {
+    switch (direction) {
+      case "up": this.scrollUp(); break;
+      case "down": this.scrollDown(); break;
+      case "top": this.scrollTop(); break;
+      case "bottom": this.scrollBottom(); break;
     }
   }
 

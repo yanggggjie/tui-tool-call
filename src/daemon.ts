@@ -1,5 +1,5 @@
 /**
- * tui-use/src/daemon.ts
+ * ttc/src/daemon.ts
  *
  * Background daemon process. Manages PTY sessions, listens on Unix socket.
  * Auto-exits when all sessions have been dead for IDLE_TIMEOUT_MS.
@@ -12,19 +12,24 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { Session } from "./session";
+import { validateSessionName } from "./sessionName";
 import {
   Request,
   Response,
   StartRequest,
-  SnapshotRequest,
-  WaitRequest,
+  ScreenRequest,
   TypeRequest,
   PressRequest,
   KillRequest,
   UseRequest,
+  ScrollRequest,
+  ScreenResponse,
 } from "./protocol";
 
-const TERMLINK_DIR = path.join(os.homedir(), ".tui-use");
+const WAIT_MS = 3000;
+const DEBOUNCE_MS = 100;
+
+const TERMLINK_DIR = path.join(os.homedir(), ".ttc");
 export const SOCKET_PATH = path.join(TERMLINK_DIR, "daemon.sock");
 export const PID_PATH = path.join(TERMLINK_DIR, "daemon.pid");
 export const DAEMON_PORT = 7654;
@@ -63,26 +68,41 @@ function resetIdleTimer() {
   idleTimer.unref(); // don't prevent process exit if nothing else is running
 }
 
-const ADJECTIVES = [
-  "brave", "calm", "eager", "fancy", "gentle", "happy", "jolly", "kind",
-  "lively", "merry", "nice", "proud", "quiet", "rapid", "silly", "tidy",
-  "witty", "zesty", "bold", "crisp", "dusty", "early", "faint", "grand",
-  "heavy", "icy", "jazzy", "keen", "lazy", "misty", "noble", "odd",
-  "pale", "quirky", "rosy", "salty", "tangy", "urban", "vivid", "warm",
-];
+function getCurrentSession(): Session | Response {
+  if (!currentSession) {
+    return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
+  }
+  const session = sessions.get(currentSession);
+  if (!session) {
+    return { type: "error", message: `Session not found: ${currentSession}` };
+  }
+  return session;
+}
 
-const NOUNS = [
-  "panda", "koala", "otter", "crane", "finch", "gecko", "heron", "ibis",
-  "jaguar", "kiwi", "lemur", "mink", "newt", "okapi", "puffin", "quail",
-  "raven", "stoat", "tapir", "urial", "viper", "wombat", "xerus", "yak",
-  "zebra", "bison", "capybara", "dingo", "elk", "ferret", "gibbon", "hawk",
-  "impala", "jackal", "kudu", "lynx", "marmot", "narwhal", "ocelot", "python",
-];
+function screenResponse(
+  session: Session,
+  sessionId: string,
+  responseType: ScreenResponse["type"],
+  snap: ReturnType<Session["snapshot"]>
+): ScreenResponse {
+  return {
+    type: responseType,
+    session_id: sessionId,
+    lines: snap.lines,
+    changed: snap.changed,
+    status: session.status,
+    exit_code: session.exitCode,
+    title: snap.title,
+    is_fullscreen: snap.is_fullscreen,
+    cols: session.cols,
+    rows: session.rows,
+    highlights: snap.highlights,
+  };
+}
 
-function generateId(): string {
-  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-  return `${adj}-${noun}`;
+async function doneSnapshot(session: Session): Promise<ReturnType<Session["snapshot"]>> {
+  await session.wait(WAIT_MS, undefined, DEBOUNCE_MS);
+  return session.snapshot();
 }
 
 // ---- Request handlers ----
@@ -91,21 +111,30 @@ async function handleRequest(req: Request): Promise<Response> {
   switch (req.type) {
     case "start": {
       const r = req as StartRequest;
-      const id = generateId();
-      const session = new Session(id, r.command, {
+      const nameErr = validateSessionName(r.session_name);
+      if (nameErr) return { type: "error", message: nameErr };
+      if (sessions.has(r.session_name)) {
+        return {
+          type: "error",
+          message: `Session "${r.session_name}" already exists. Use 'ttc use ${r.session_name}' or 'ttc kill' first.`,
+        };
+      }
+      const session = new Session(r.session_name, r.command, {
         cwd: r.cwd,
-        label: r.label,
+        label: r.session_name,
         cols: r.cols,
         rows: r.rows,
       });
-      sessions.set(id, session);
-      setCurrentSession(id);  // 新启动的 session 自动设为当前
+      sessions.set(r.session_name, session);
+      setCurrentSession(r.session_name);
       resetIdleTimer();
-      return { type: "start", session_id: id };
+      return { type: "start", session_id: r.session_name };
     }
 
     case "use": {
       const r = req as UseRequest;
+      const nameErr = validateSessionName(r.session_id);
+      if (nameErr) return { type: "error", message: nameErr };
       if (!sessions.has(r.session_id)) {
         return { type: "error", message: `Session not found: ${r.session_id}` };
       }
@@ -113,69 +142,24 @@ async function handleRequest(req: Request): Promise<Response> {
       return { type: "use", session_id: r.session_id, ok: true };
     }
 
-    case "snapshot": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
-      const { lines, cursor, changed, highlights, title, is_fullscreen } = session.snapshot({ color: (req as SnapshotRequest).color });
-      return {
-        type: "snapshot",
-        session_id: currentSession,
-        lines,
-        cursor,
-        changed,
-        highlights,
-        title,
-        is_fullscreen,
-        cols: session.cols,
-        rows: session.rows,
-        status: session.status,
-        exit_code: session.exitCode,
-      };
-    }
-
-    case "wait": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
-      const waitReq = req as WaitRequest;
-      const { lines, cursor, changed, highlights, title, is_fullscreen } = await session.wait(waitReq.timeout_ms ?? 3000, waitReq.text, waitReq.debounce_ms ?? 100, { color: waitReq.color });
-      return {
-        type: "wait",
-        session_id: currentSession,
-        lines,
-        cursor,
-        changed,
-        highlights,
-        title,
-        is_fullscreen,
-        cols: session.cols,
-        rows: session.rows,
-        status: session.status,
-        exit_code: session.exitCode,
-      };
+    case "screen": {
+      const r = req as ScreenRequest;
+      const sessionOrError = getCurrentSession();
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      const session = sessionOrError as Session;
+      const snap = r.done ? await doneSnapshot(session) : session.snapshot();
+      return screenResponse(session, currentSession!, "screen", snap);
     }
 
     case "type": {
       const r = req as TypeRequest;
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
+      const sessionOrError = getCurrentSession();
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      const session = sessionOrError as Session;
       try {
         session.send(r.input);
-        return { type: "type", ok: true };
+        const snap = await doneSnapshot(session);
+        return screenResponse(session, currentSession!, "type", snap);
       } catch (e: unknown) {
         return {
           type: "error",
@@ -186,16 +170,30 @@ async function handleRequest(req: Request): Promise<Response> {
 
     case "press": {
       const r = req as PressRequest;
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
+      const sessionOrError = getCurrentSession();
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      const session = sessionOrError as Session;
       try {
         session.press(r.key);
-        return { type: "press", ok: true };
+        const snap = await doneSnapshot(session);
+        return screenResponse(session, currentSession!, "press", snap);
+      } catch (e: unknown) {
+        return {
+          type: "error",
+          message: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }
+
+    case "press": {
+      const r = req as PressRequest;
+      const sessionOrError = getCurrentSession();
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      const session = sessionOrError as Session;
+      try {
+        session.press(r.key);
+        const snap = await doneSnapshot(session);
+        return screenResponse(session, currentSession!, "press", snap);
       } catch (e: unknown) {
         return {
           type: "error",
@@ -206,7 +204,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     case "kill": {
       if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
+        return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
       }
       const session = sessions.get(currentSession);
       if (!session) {
@@ -224,53 +222,18 @@ async function handleRequest(req: Request): Promise<Response> {
       return { type: "list", sessions: list, current: currentSession ?? undefined };
     }
 
-    case "paste": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
-      const r = req as import("./protocol").PasteRequest;
-      // Send text with line-by-line delay for stability
-      const lines = r.text.split("\n");
-      for (const line of lines) {
-        session.send(line);
-        session.press("enter");
-      }
-      return { type: "paste", ok: true };
-    }
-
-    case "find": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
-      const r = req as import("./protocol").FindRequest;
-      const matches = session.find(r.pattern);
-      return { type: "find", matches };
-    }
-
     case "scroll": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
-      const r = req as import("./protocol").ScrollRequest;
-      const ok = session.scroll(r.lines);
-      return { type: "scroll", lines: r.lines, ok };
+      const sessionOrError = getCurrentSession();
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      const session = sessionOrError as Session;
+      const r = req as ScrollRequest;
+      session.scroll(r.direction);
+      return screenResponse(session, currentSession!, "scroll", session.snapshot());
     }
 
     case "info": {
       if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
+        return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
       }
       const session = sessions.get(currentSession);
       if (!session) {
@@ -291,7 +254,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     case "rename": {
       if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'tui-use use <session_id>' first." };
+        return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
       }
       const session = sessions.get(currentSession);
       if (!session) {
@@ -367,10 +330,9 @@ function startServer() {
   });
 
   startServerListener(server, () => {
-    // Write PID file
     fs.writeFileSync(PID_PATH, String(process.pid));
     const listenTarget = process.platform === "win32" ? `port ${DAEMON_PORT}` : SOCKET_PATH;
-    process.stderr.write(`tui-use daemon started (pid=${process.pid}, listening on ${listenTarget})\n`);
+    process.stderr.write(`ttc daemon started (pid=${process.pid}, listening on ${listenTarget})\n`);
   });
 
   server.on("error", (err: NodeJS.ErrnoException) => {
@@ -378,7 +340,7 @@ function startServer() {
 
     // Windows-specific error guidance
     if (process.platform === "win32" && err.code === "EADDRINUSE") {
-      message += `\n  Port ${DAEMON_PORT} is already in use. Try:\n    tui-use daemon stop`;
+      message += `\n  Port ${DAEMON_PORT} is already in use. Try:\n    ttc daemon stop`;
     } else if (process.platform === "win32" && err.code === "EACCES") {
       message += `\n  Permission denied on port ${DAEMON_PORT}. Try running with elevated privileges.`;
     }

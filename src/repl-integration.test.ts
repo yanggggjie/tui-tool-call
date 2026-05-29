@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * Integration test cases for tui-use with REPLs
+ * Integration test cases for ttc with REPLs
  *
- * Tests verify that tui-use works correctly with interactive programs beyond TUI apps.
+ * Tests verify that ttc works correctly with interactive programs beyond TUI apps.
  * These are manual test scenarios (not automated, since they require actual Python/Node)
  * but document the expected behavior and serve as regression test specifications.
  */
@@ -12,11 +12,11 @@ describe("REPL Integration Tests (Manual Verification)", () => {
   describe("Python REPL", () => {
     it("should start python3 and execute basic expression", () => {
       // Manual test case:
-      // tui-use start python3
-      // tui-use wait --text ">>>"
-      // tui-use type "1 + 1"
-      // tui-use press enter
-      // tui-use snapshot
+      // ttc start python3
+      // ttc wait --text ">>>"
+      // ttc type "1 + 1"
+      // ttc press enter
+      // ttc snapshot
       // Expected: screen shows ">>> 1 + 1" followed by "2"
 
       const pythonOutput = ">>> 1 + 1\n2\n>>> ";
@@ -25,14 +25,14 @@ describe("REPL Integration Tests (Manual Verification)", () => {
 
     it("should handle multi-line statements", () => {
       // Manual test:
-      // tui-use type "def add(a, b):"
-      // tui-use press enter
-      // tui-use type "    return a + b"
-      // tui-use press enter
-      // tui-use press enter
-      // tui-use wait
-      // tui-use type "add(3, 4)"
-      // tui-use press enter
+      // ttc type "def add(a, b):"
+      // ttc press enter
+      // ttc type "    return a + b"
+      // ttc press enter
+      // ttc press enter
+      // ttc wait
+      // ttc type "add(3, 4)"
+      // ttc press enter
       // Expected: screen shows function definition, then "7"
 
       const pythonDef = "def add(a, b):\n    return a + b\n";
@@ -41,11 +41,11 @@ describe("REPL Integration Tests (Manual Verification)", () => {
 
     it("should handle imports and module execution", () => {
       // Manual test:
-      // tui-use type "import json"
-      // tui-use press enter
-      // tui-use wait
-      // tui-use type "json.dumps({'hello': 'world'})"
-      // tui-use press enter
+      // ttc type "import json"
+      // ttc press enter
+      // ttc wait
+      // ttc type "json.dumps({'hello': 'world'})"
+      // ttc press enter
       // Expected: screen shows JSON output
 
       const jsonOutput = '{"hello": "world"}';
@@ -54,8 +54,8 @@ describe("REPL Integration Tests (Manual Verification)", () => {
 
     it("should handle errors gracefully", () => {
       // Manual test:
-      // tui-use type "1 / 0"
-      // tui-use press enter
+      // ttc type "1 / 0"
+      // ttc press enter
       // Expected: screen shows ZeroDivisionError traceback
 
       const errorOutput = "ZeroDivisionError";
@@ -66,11 +66,11 @@ describe("REPL Integration Tests (Manual Verification)", () => {
   describe("Node REPL", () => {
     it("should start node and execute basic expression", () => {
       // Manual test:
-      // tui-use start node
-      // tui-use wait --text ">"
-      // tui-use type "1 + 1"
-      // tui-use press enter
-      // tui-use snapshot
+      // ttc start node
+      // ttc wait --text ">"
+      // ttc type "1 + 1"
+      // ttc press enter
+      // ttc snapshot
       // Expected: screen shows "1 + 1" followed by "2"
 
       const nodeOutput = "1 + 1\n2\n> ";
@@ -79,11 +79,11 @@ describe("REPL Integration Tests (Manual Verification)", () => {
 
     it("should handle object literals", () => {
       // Manual test:
-      // tui-use type "const obj = {a: 1, b: 2}"
-      // tui-use press enter
-      // tui-use wait
-      // tui-use type "obj.a"
-      // tui-use press enter
+      // ttc type "const obj = {a: 1, b: 2}"
+      // ttc press enter
+      // ttc wait
+      // ttc type "obj.a"
+      // ttc press enter
       // Expected: screen shows "1"
 
       const objAccess = "obj.a\n1";
@@ -92,11 +92,11 @@ describe("REPL Integration Tests (Manual Verification)", () => {
 
     it("should handle async/await", () => {
       // Manual test:
-      // tui-use type "async function test() { return 42; }"
-      // tui-use press enter
-      // tui-use wait
-      // tui-use type "test()"
-      // tui-use press enter
+      // ttc type "async function test() { return 42; }"
+      // ttc press enter
+      // ttc wait
+      // ttc type "test()"
+      // ttc press enter
       // Expected: screen shows Promise object
 
       const asyncOutput = "Promise";
@@ -105,11 +105,11 @@ describe("REPL Integration Tests (Manual Verification)", () => {
 
     it("should handle require statements", () => {
       // Manual test:
-      // tui-use type "const fs = require('fs')"
-      // tui-use press enter
-      // tui-use wait
-      // tui-use type "fs.readdirSync('.')"
-      // tui-use press enter
+      // ttc type "const fs = require('fs')"
+      // ttc press enter
+      // ttc wait
+      // ttc type "fs.readdirSync('.')"
+      // ttc press enter
       // Expected: screen shows array of files
 
       const fsOutput = "[";
@@ -120,13 +120,13 @@ describe("REPL Integration Tests (Manual Verification)", () => {
   describe("Cross-REPL Behavior", () => {
     it("should handle rapid input in all REPLs", () => {
       // Manual test: Type several commands rapidly without waiting between
-      // tui-use type "expr1"
-      // tui-use press enter
-      // tui-use type "expr2"
-      // tui-use press enter
-      // tui-use type "expr3"
-      // tui-use press enter
-      // tui-use wait
+      // ttc type "expr1"
+      // ttc press enter
+      // ttc type "expr2"
+      // ttc press enter
+      // ttc type "expr3"
+      // ttc press enter
+      // ttc wait
       // Expected: All three commands execute and results appear
 
       const rapidOutput = "expr1\nexpr2\nexpr3";
@@ -143,17 +143,12 @@ describe("REPL Integration Tests (Manual Verification)", () => {
       expect(longOutput.length).toBe(1000);
     });
 
-    it("should preserve cursor position across commands", () => {
-      // Manual test: Track cursor position in snapshots
-      // Each snapshot should show cursor moving as new prompts appear
-      // Expected: cursor.y increments with each command
+    it("should show growing REPL output across commands", () => {
+      // Manual test: Each type/press returns screen with more history
+      // Expected: later snapshots contain earlier command output
 
-      const cursorSequence = [
-        { y: 1 }, // After first prompt
-        { y: 2 }, // After first command
-        { y: 3 }, // After second prompt
-      ];
-      expect(cursorSequence).toHaveLength(3);
+      const screens = ["1 + 1", "2", "x = 1"];
+      expect(screens.every((s) => s.length > 0)).toBe(true);
     });
   });
 
@@ -170,8 +165,8 @@ describe("REPL Integration Tests (Manual Verification)", () => {
 
     it("should handle exit commands gracefully", () => {
       // Manual test:
-      // tui-use type "exit()"
-      // tui-use press enter
+      // ttc type "exit()"
+      // ttc press enter
       // Expected: REPL exits, session status becomes "exited"
 
       const exitCommand = "exit()";
@@ -188,10 +183,10 @@ describe("REPL Integration Tests (Manual Verification)", () => {
       expect(ctrlC).toHaveLength(1);
     });
 
-    it("should handle multi-line paste operations", () => {
-      // Manual test: Paste entire script at once
-      // tui-use paste "line1\nline2\nline3"
-      // Expected: All lines execute in order
+    it("should handle multi-line input via type", () => {
+      // Manual test: Type entire script at once
+      // ttc type "line1\nline2\nline3"
+      // Expected: All lines execute in order, returns stabilized screen
 
       const script = "line1\nline2\nline3";
       const lines = script.split("\n");

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * Advanced scenario tests for tui-use
+ * Advanced scenario tests for ttc
  *
  * These tests document expected behavior for:
  * - Database CLI interactions (psql, sqlite3, mysql)
@@ -17,10 +17,10 @@ describe("Database CLI Integration Tests", () => {
   describe("SQLite3 CLI", () => {
     it("should connect to sqlite3 and execute queries", () => {
       // Manual test:
-      // tui-use start sqlite3
-      // tui-use wait --text "sqlite>"
-      // tui-use type ".tables"
-      // tui-use press enter
+      // ttc start sqlite3
+      // ttc wait --text "sqlite>"
+      // ttc type ".tables"
+      // ttc press enter
       // Expected: table list appears
 
       const sqlitePrompt = "sqlite>";
@@ -29,8 +29,8 @@ describe("Database CLI Integration Tests", () => {
 
     it("should handle sqlite3 result formatting", () => {
       // Manual test:
-      // tui-use type "SELECT 1 as id, 'test' as name;"
-      // tui-use press enter
+      // ttc type "SELECT 1 as id, 'test' as name;"
+      // ttc press enter
       // Expected: formatted output with columns and values
 
       const sqliteOutput = "id|name\n1|test";
@@ -39,8 +39,8 @@ describe("Database CLI Integration Tests", () => {
 
     it("should handle .schema and metadata commands", () => {
       // Manual test:
-      // tui-use type ".schema"
-      // tui-use press enter
+      // ttc type ".schema"
+      // ttc press enter
       // Expected: table schemas displayed
 
       const schemaCommand = ".schema";
@@ -51,8 +51,8 @@ describe("Database CLI Integration Tests", () => {
   describe("PostgreSQL (psql) CLI", () => {
     it("should handle psql connection strings", () => {
       // Manual test:
-      // tui-use start psql -U postgres
-      // tui-use wait --text "postgres=#"
+      // ttc start psql -U postgres
+      // ttc wait --text "postgres=#"
       // Expected: connected to database
 
       const psqlPrompt = "postgres=#";
@@ -61,9 +61,9 @@ describe("Database CLI Integration Tests", () => {
 
     it("should navigate psql pager output", () => {
       // Manual test:
-      // tui-use type "SELECT * FROM large_table;"
-      // tui-use wait --text "(END)"  # psql pager
-      // tui-use press q  # quit pager
+      // ttc type "SELECT * FROM large_table;"
+      // ttc wait --text "(END)"  # psql pager
+      // ttc press q  # quit pager
       // Expected: pager closes, returns to prompt
 
       const psqlPager = "(END)";
@@ -72,8 +72,8 @@ describe("Database CLI Integration Tests", () => {
 
     it("should handle psql backslash commands", () => {
       // Manual test:
-      // tui-use type "\\dt"  # list tables
-      // tui-use press enter
+      // ttc type "\\dt"  # list tables
+      // ttc press enter
       // Expected: table list displayed
 
       const backslashCmd = "\\dt";
@@ -84,10 +84,10 @@ describe("Database CLI Integration Tests", () => {
   describe("MySQL CLI", () => {
     it("should handle mysql command-line input", () => {
       // Manual test:
-      // tui-use start mysql -u root
-      // tui-use wait --text "mysql>"
-      // tui-use type "SHOW TABLES;"
-      // tui-use press enter
+      // ttc start mysql -u root
+      // ttc wait --text "mysql>"
+      // ttc type "SHOW TABLES;"
+      // ttc press enter
       // Expected: table list
 
       const mysqlPrompt = "mysql>";
@@ -96,8 +96,8 @@ describe("Database CLI Integration Tests", () => {
 
     it("should capture database error messages", () => {
       // Manual test:
-      // tui-use type "SELECT * FROM nonexistent_table;"
-      // tui-use press enter
+      // ttc type "SELECT * FROM nonexistent_table;"
+      // ttc press enter
       // Expected: error message appears (e.g., "Table 'db.nonexistent_table' doesn't exist")
 
       const mysqlError = "doesn't exist";
@@ -106,8 +106,8 @@ describe("Database CLI Integration Tests", () => {
 
     it("should handle long-running queries with timeout", () => {
       // Manual test:
-      // tui-use type "SELECT SLEEP(10);"  # 10 second delay
-      // tui-use wait 15000  # wait up to 15 seconds
+      // ttc type "SELECT SLEEP(10);"  # 10 second delay
+      // ttc wait 15000  # wait up to 15 seconds
       // Expected: query completes, result shows
 
       const sleepQuery = "SLEEP(10)";
@@ -120,11 +120,11 @@ describe("SSH Remote Execution Tests", () => {
   describe("SSH Session Management", () => {
     it("should execute commands via SSH tunnel", () => {
       // Manual test:
-      // tui-use start ssh user@remote-server
-      // tui-use wait --text "password:"
-      // tui-use type "password"
-      // tui-use press enter
-      // tui-use wait --text "$"  # shell prompt
+      // ttc start ssh user@remote-server
+      // ttc wait --text "password:"
+      // ttc type "password"
+      // ttc press enter
+      // ttc wait --text "$"  # shell prompt
       // Expected: connected to remote shell
 
       const sshPrompt = "password:";
@@ -136,7 +136,7 @@ describe("SSH Remote Execution Tests", () => {
       // - password
       // - passphrase (for key)
       // - two-factor code
-      // Expected: each prompt can be answered with tui-use type/press
+      // Expected: each prompt can be answered with ttc type/press
 
       const prompts = ["password:", "Passphrase", "Enter"];
       expect(prompts.length).toBeGreaterThan(0);
@@ -145,11 +145,11 @@ describe("SSH Remote Execution Tests", () => {
     it("should maintain SSH session across multiple commands", () => {
       // Manual test:
       // Connect via SSH, then issue multiple commands
-      // tui-use type "pwd"
-      // tui-use press enter
-      // tui-use wait
-      // tui-use type "ls -la"
-      // tui-use press enter
+      // ttc type "pwd"
+      // ttc press enter
+      // ttc wait
+      // ttc type "ls -la"
+      // ttc press enter
       // Expected: Both commands execute in same session
 
       const cmdSequence = ["pwd", "ls -la"];
@@ -175,9 +175,9 @@ describe("SSH Remote Execution Tests", () => {
 
     it("should clean up SSH sessions on disconnect", () => {
       // Manual test:
-      // tui-use type "exit"
-      // tui-use press enter
-      // tui-use wait
+      // ttc type "exit"
+      // ttc press enter
+      // ttc wait
       // Expected: session status becomes "exited", resources cleaned up
 
       const exitCmd = "exit";
@@ -208,8 +208,8 @@ describe("Signal Handling & Resource Cleanup Tests", () => {
     it("should not leak memory across rapid create/destroy cycles", () => {
       // Manual test:
       // for i in 1..100; do
-      //   tui-use start python3
-      //   tui-use kill
+      //   ttc start python3
+      //   ttc kill
       // done
       // Monitor memory usage - should not grow unbounded
       // Expected: memory stabilizes, no memory leak
@@ -242,9 +242,9 @@ describe("Large Output & Performance Tests", () => {
   describe("Output Handling", () => {
     it("should handle 1MB+ output without buffer overflow", () => {
       // Manual test:
-      // tui-use type "python3 -c \"print('x' * 1000000)\""
-      // tui-use press enter
-      // tui-use wait
+      // ttc type "python3 -c \"print('x' * 1000000)\""
+      // ttc press enter
+      // ttc wait
       // Expected: large output captured completely
 
       const largeOutput = "x".repeat(1000000);
@@ -254,8 +254,8 @@ describe("Large Output & Performance Tests", () => {
     it("should maintain performance with 1000+ rapid commands", () => {
       // Manual test: Send many commands in sequence
       // for i in 1..1000; do
-      //   tui-use type "expr $i"
-      //   tui-use press enter
+      //   ttc type "expr $i"
+      //   ttc press enter
       // done
       // Expected: All commands execute, no timeouts
 
@@ -266,7 +266,7 @@ describe("Large Output & Performance Tests", () => {
     it("should handle programs that output binary data", () => {
       // Manual test:
       // Some programs output non-UTF8 data
-      // Expected: tui-use captures and displays correctly
+      // Expected: ttc captures and displays correctly
 
       const binaryHandling = true;
       expect(binaryHandling).toBe(true);

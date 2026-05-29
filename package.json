@@ -1,8 +1,10 @@
 {
-  "name": "tui-use",
+  "name": "tui-tool-call",
   "version": "0.1.18",
   "description": "TUI automation for AI agents — like BrowserUse, but for the terminal",
-  "bin": "./dist/cli.js",
+  "bin": {
+    "ttc": "./dist/cli.js"
+  },
   "files": [
     "dist/",
     "scripts/",
@@ -11,7 +13,7 @@
   ],
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",
-    "clean": "rm -rf node_modules package-lock.json dist ~/.tui-use",
+    "clean": "rm -rf node_modules package-lock.json dist ~/.ttc",
     "dev": "tsc --watch",
     "postinstall": "node scripts/install.js",
     "prepublishOnly": "npm run build",

@@ -1,5 +1,5 @@
 /**
- * tui-use/src/client.ts
+ * ttc/src/client.ts
  *
  * CLI → daemon IPC client.
  * Auto-starts the daemon if it's not running.
@@ -23,7 +23,7 @@ function createConnection(): net.Socket {
 }
 
 function info(msg: string): void {
-  process.stderr.write(`tui-use: ${msg}\n`);
+  process.stderr.write(`ttc: ${msg}\n`);
 }
 
 /** Send one request to daemon, return response. Auto-starts daemon if needed. */
@@ -75,7 +75,7 @@ async function startDaemon(): Promise<void> {
   let msg = `Daemon failed to start after ${DAEMON_START_TIMEOUT_MS}ms`;
   if (process.platform === "win32") {
     msg += `\n  Check if another daemon is running on port ${DAEMON_PORT}: netstat -ano | findstr :${DAEMON_PORT}`;
-    msg += `\n  Or try: tui-use daemon stop`;
+    msg += `\n  Or try: ttc daemon stop`;
   } else {
     msg += `\n  Check daemon stderr for errors`;
   }
@@ -133,7 +133,7 @@ function sendToDaemon(req: Request): Promise<Response> {
       // Windows-specific error guidance
       if (process.platform === "win32") {
         if (e.code === "ECONNREFUSED") {
-          message += `\n  Could not connect to daemon on port ${DAEMON_PORT}. Try: tui-use daemon stop`;
+          message += `\n  Could not connect to daemon on port ${DAEMON_PORT}. Try: ttc daemon stop`;
         } else if (e.code === "EACCES") {
           message += `\n  Permission denied connecting to daemon. Try running with elevated privileges.`;
         }

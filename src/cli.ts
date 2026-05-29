@@ -1,43 +1,33 @@
 #!/usr/bin/env node
 /**
- * tui-use/src/cli.ts
- *
- * Entry point for the `tui-use` CLI command.
- *
- *   tui-use start <cmd>      → session_id (becomes current)
- *   tui-use use <id>         → set current session
- *   tui-use snapshot         → JSON screen snapshot (current session)
- *   tui-use wait             → JSON screen snapshot after change (current session)
- *   tui-use type <text>      → type text to current session
- *   tui-use press <key>      → press key in current session
- *   tui-use kill             → terminate current session
- *   tui-use list             → session list (with current)
- *   tui-use daemon status    → check daemon status
- *   tui-use daemon stop      → stop the daemon
- *   tui-use daemon restart   → restart the daemon
+ * ttc CLI
  */
 import { Command } from "commander";
 import { sendRequest, checkDaemonStatus, stopDaemon, restartDaemon } from "./client";
+import { validateSessionName } from "./sessionName";
 import { Response, ErrorResponse, ScreenResponse } from "./protocol";
-import { SUPPORTED_KEYS } from "./session";
 import { version } from "../package.json";
 
 const program = new Command();
 
 program
-  .name("tui-use")
+  .name("ttc")
   .description("TUI automation for AI agents — like BrowserUse, but for the terminal")
   .version(version);
 
-// ---- start ----
+// ---- session ----
 program
-  .command("start [args...]")
-  .description("Start an interactive program in a PTY session")
+  .command("start <session-name> [args...]")
+  .description("Start a named PTY session (name: lowercase letters and hyphens, e.g. temp-work)")
   .option("--cwd <dir>", "Working directory for the command")
-  .option("--label <name>", "Human-readable label for this session")
   .option("--cols <n>", "Terminal width (default: 120)", "120")
   .option("--rows <n>", "Terminal height (default: 30)", "30")
-  .action(async (args: string[], opts) => {
+  .action(async (sessionName: string, args: string[], opts) => {
+    const nameErr = validateSessionName(sessionName);
+    if (nameErr) {
+      process.stderr.write(`Error: ${nameErr}\n`);
+      process.exit(1);
+    }
     const command = args.join(" ");
     if (!command.trim()) {
       process.stderr.write("Error: no command specified\n");
@@ -45,208 +35,68 @@ program
     }
     const res = await sendRequest({
       type: "start",
+      session_name: sessionName,
       command,
       cwd: opts.cwd,
-      label: opts.label,
       cols: parseInt(opts.cols, 10),
       rows: parseInt(opts.rows, 10),
     });
     handleResponse(res, (r) => {
-      if (r.type === "start") {
-        // Print just the session_id for easy shell capture: SID=$(tui-use start ...)
-        console.log(r.session_id);
-      }
+      if (r.type === "start") console.log(r.session_id);
     });
   });
 
-// ---- snapshot ----
 program
-  .command("snapshot")
-  .description("Return the current rendered screen snapshot (requires: tui-use use <id> first)")
-  .option("--format <fmt>", "Output format: pretty, json (default: pretty)", "pretty")
-  .option("--color", "Preserve ANSI color/style escape sequences in output lines")
-  .action(async (opts) => {
-    const res = await sendRequest({ type: "snapshot", color: opts.color ?? false });
-    handleResponse(res, (r) => printScreen(r as ScreenResponse, opts.format as "pretty" | "json"));
-  });
-
-// ---- wait ----
-program
-  .command("wait [duration]")
-  .description(
-    "Wait for screen to change or timeout.\n" +
-    "  wait           → wait for screen to change (default 3000ms)\n" +
-    "  wait 5000      → wait for 5000ms\n" +
-    "  wait --text \"pattern\"  → wait until screen contains text\n" +
-    "  wait --debounce 300    → wait until screen is stable for 300ms (default: 100ms)"
-  )
-  .option("--text <pattern>", "Wait until screen contains text (substring or regex)")
-  .option("--debounce <ms>", "Idle time after last change before resolving, in ms (default: 100)", "100")
-  .option("--format <fmt>", "Output format: pretty, json (default: pretty)", "pretty")
-  .option("--color", "Preserve ANSI color/style escape sequences in output lines")
-  .action(async (duration: string | undefined, opts) => {
-    // Parse duration (position arg) or use default
-    let timeoutMs = 3000;
-    if (duration) {
-      const parsed = parseInt(duration, 10);
-      if (!isNaN(parsed)) {
-        timeoutMs = parsed;
-      }
+  .command("use <session-name>")
+  .description("Set the current session for subsequent commands")
+  .action(async (sessionName: string) => {
+    const nameErr = validateSessionName(sessionName);
+    if (nameErr) {
+      process.stderr.write(`Error: ${nameErr}\n`);
+      process.exit(1);
     }
-    const debounceMs = parseInt(opts.debounce, 10);
-    const res = await sendRequest({
-      type: "wait",
-      timeout_ms: timeoutMs,
-      text: opts.text,
-      debounce_ms: isNaN(debounceMs) ? 100 : debounceMs,
-      color: opts.color ?? false,
-    });
-    handleResponse(res, (r) => printScreen(r as ScreenResponse, opts.format as "pretty" | "json"));
-  });
-
-// ---- type ----
-program
-  .command("type <input...>")
-  .description(
-    "Type text to the current session.\n" +
-    "  Use \\n for Enter, \\t for Tab\n" +
-    "  To specify a different session: tui-use use <id> first"
-  )
-  .action(async (inputParts: string[]) => {
-    const input = inputParts.join(" ");
-    const res = await sendRequest({ type: "type", input });
+    const res = await sendRequest({ type: "use", session_id: sessionName });
     handleResponse(res, (r) => {
-      if (r.type === "type") {
-        console.log(JSON.stringify({ ok: r.ok }));
-      }
+      if (r.type === "use") console.log(JSON.stringify({ ok: r.ok, session_id: r.session_id }));
     });
   });
 
-// ---- press ----
-program
-  .command("press <key>")
-  .description(
-    "Press a key in the current session.\n" +
-    "  Keys: ctrl+c, ctrl+d, arrow_up, arrow_down, enter, escape, tab, etc.\n" +
-    "  Run `tui-use keys` for the full key list"
-  )
-  .action(async (key: string) => {
-    const res = await sendRequest({ type: "press", key });
-    handleResponse(res, (r) => {
-      if (r.type === "press") {
-        console.log(JSON.stringify({ ok: r.ok }));
-      }
-    });
-  });
-
-// ---- kill ----
 program
   .command("kill")
-  .description("Terminate the current session (requires: tui-use use <id> first)")
+  .description("Terminate the current session")
   .action(async () => {
     const res = await sendRequest({ type: "kill" });
     handleResponse(res, (r) => {
-      if (r.type === "kill") {
-        console.log(JSON.stringify({ ok: r.ok }));
-      }
+      if (r.type === "kill") console.log(JSON.stringify({ ok: r.ok }));
     });
   });
 
-// ---- use ----
 program
-  .command("use <session_id>")
-  .description("Set the current session for subsequent commands")
-  .action(async (session_id: string) => {
-    const res = await sendRequest({ type: "use", session_id });
+  .command("list")
+  .description("List all active sessions")
+  .action(async () => {
+    const res = await sendRequest({ type: "list" });
     handleResponse(res, (r) => {
-      if (r.type === "use") {
-        console.log(JSON.stringify({ ok: r.ok, session_id: r.session_id }));
+      if (r.type !== "list") return;
+      if (r.sessions.length === 0) {
+        console.log("No active sessions");
+        return;
+      }
+      const idWidth = Math.max(10, ...r.sessions.map((s) => s.session_id.length));
+      const labelWidth = Math.max(5, ...r.sessions.map((s) => s.label.length));
+      const cmdWidth = Math.max(7, ...r.sessions.map((s) => s.command.length));
+      const header = `${"SESSION ID".padEnd(idWidth)}  ${"LABEL".padEnd(labelWidth)}  ${"COMMAND".padEnd(cmdWidth)}  STATUS`;
+      console.log(header);
+      console.log("-".repeat(header.length));
+      for (const s of r.sessions) {
+        const mark = s.session_id === r.current ? " [current]" : "";
+        console.log(
+          `${s.session_id.padEnd(idWidth)}  ${s.label.padEnd(labelWidth)}  ${s.command.padEnd(cmdWidth)}  ${s.status}${mark}`
+        );
       }
     });
   });
 
-// ---- keys ----
-program
-  .command("keys")
-  .description("List all supported special key names for use with `press`")
-  .action(() => {
-    console.log(JSON.stringify(SUPPORTED_KEYS, null, 2));
-  });
-
-// ---- paste ----
-program
-  .command("paste <text...>")
-  .description(
-    "Paste multi-line text to the current session. Each line is sent followed by Enter."
-  )
-  .action(async (textParts: string[]) => {
-    const text = textParts.join(" ");
-    const res = await sendRequest({ type: "paste", text });
-    handleResponse(res, (r) => {
-      if (r.type === "paste") {
-        console.log(JSON.stringify({ ok: r.ok }));
-      }
-    });
-  });
-
-// ---- find ----
-program
-  .command("find <pattern>")
-  .description("Search for text pattern in the current screen (regex supported)")
-  .action(async (pattern: string) => {
-    const res = await sendRequest({ type: "find", pattern });
-    handleResponse(res, (r) => {
-      if (r.type === "find") {
-        // Pretty output
-        if (r.matches.length === 0) {
-          console.log("No matches found");
-        } else {
-          console.log(`Found ${r.matches.length} match(es):`);
-          for (const m of r.matches) {
-            console.log(`  L${m.line},C${m.col_start}-${m.col_end}: "${m.text}"`);
-          }
-        }
-      }
-    });
-  });
-
-// ---- scrollup ----
-program
-  .command("scrollup <lines>")
-  .description("Scroll up to view older content (move viewport up). Note: Limited by scrollback buffer.")
-  .action(async (lines: string) => {
-    const numLines = parseInt(lines, 10);
-    if (isNaN(numLines) || numLines < 0) {
-      process.stderr.write("Error: lines must be a positive number\n");
-      process.exit(1);
-    }
-    const res = await sendRequest({ type: "scroll", lines: -numLines });
-    handleResponse(res, (r) => {
-      if (r.type === "scroll") {
-        console.log(JSON.stringify({ ok: r.ok, direction: "up", lines: numLines }));
-      }
-    });
-  });
-
-// ---- scrolldown ----
-program
-  .command("scrolldown <lines>")
-  .description("Scroll down to view newer content (move viewport down). Note: Limited by scrollback buffer.")
-  .action(async (lines: string) => {
-    const numLines = parseInt(lines, 10);
-    if (isNaN(numLines) || numLines < 0) {
-      process.stderr.write("Error: lines must be a positive number\n");
-      process.exit(1);
-    }
-    const res = await sendRequest({ type: "scroll", lines: numLines });
-    handleResponse(res, (r) => {
-      if (r.type === "scroll") {
-        console.log(JSON.stringify({ ok: r.ok, direction: "down", lines: numLines }));
-      }
-    });
-  });
-
-// ---- info ----
 program
   .command("info")
   .description("Show detailed information about the current session")
@@ -254,163 +104,162 @@ program
     const res = await sendRequest({ type: "info" });
     handleResponse(res, (r) => {
       if (r.type === "info") {
-        // Pretty format
         console.log(`Session ID: ${r.session_id}`);
         console.log(`Label: ${r.label}`);
         console.log(`Command: ${r.command}`);
         console.log(`Status: ${r.status}`);
-        if (r.exit_code !== null) {
-          console.log(`Exit Code: ${r.exit_code}`);
-        }
+        if (r.exit_code !== null) console.log(`Exit Code: ${r.exit_code}`);
         console.log(`Size: ${r.cols}x${r.rows}`);
         console.log(`Started: ${new Date(r.start_time).toISOString()}`);
       }
     });
   });
 
-// ---- rename ----
 program
   .command("rename <label>")
   .description("Rename the current session with a new label")
   .action(async (label: string) => {
     const res = await sendRequest({ type: "rename", label });
     handleResponse(res, (r) => {
-      if (r.type === "rename") {
-        console.log(JSON.stringify({ ok: r.ok, label: r.label }));
-      }
+      if (r.type === "rename") console.log(JSON.stringify({ ok: r.ok, label: r.label }));
     });
   });
 
-// ---- list ----
+// ---- observe (plain text screen only) ----
 program
-  .command("list")
-  .description("List all active sessions")
-  .option("--format <fmt>", "Output format: pretty, json (default: pretty)", "pretty")
-  .action(async (opts) => {
-    const res = await sendRequest({ type: "list" });
-    handleResponse(res, (r) => {
-      if (r.type === "list") {
-        const format = opts.format as "pretty" | "json";
-        if (format === "json") {
-          const output = {
-            sessions: r.sessions,
-            current: r.current,
-          };
-          console.log(JSON.stringify(output, null, 2));
-        } else {
-          // Pretty format: table-like output
-          if (r.sessions.length === 0) {
-            console.log("No active sessions");
-            return;
-          }
+  .command("now")
+  .description("Print the current screen")
+  .action(async () => {
+    const res = await sendRequest({ type: "screen", done: false });
+    handleResponse(res, (r) => printScreen(r as ScreenResponse));
+  });
 
-          // Calculate column widths
-          const idWidth = Math.max(10, ...r.sessions.map((s) => s.session_id.length));
-          const labelWidth = Math.max(5, ...r.sessions.map((s) => s.label.length));
-          const cmdWidth = Math.max(7, ...r.sessions.map((s) => s.command.length));
+program
+  .command("done")
+  .description("Wait until the screen is stable, then print it")
+  .action(async () => {
+    const res = await sendRequest({ type: "screen", done: true });
+    handleResponse(res, (r) => printScreen(r as ScreenResponse));
+  });
 
-          // Header
-          const header = `${"SESSION ID".padEnd(idWidth)}  ${"LABEL".padEnd(labelWidth)}  ${"COMMAND".padEnd(cmdWidth)}  STATUS`;
-          console.log(header);
-          console.log("-".repeat(header.length));
+program
+  .command("watch")
+  .description("Refresh screen every second in-place (Ctrl+C to stop)")
+  .action(async () => {
+    await runWatch();
+  });
 
-          // Rows
-          for (const s of r.sessions) {
-            const currentMark = s.session_id === r.current ? " [current]" : "";
-            const status = s.status + currentMark;
-            console.log(
-              `${s.session_id.padEnd(idWidth)}  ${s.label.padEnd(labelWidth)}  ${s.command.padEnd(cmdWidth)}  ${status}`
-            );
-          }
-        }
-      }
-    });
+program
+  .command("up")
+  .alias("u")
+  .description("Scroll up one screen, then print screen")
+  .action(scrollCmd("up"));
+
+program
+  .command("down")
+  .alias("d")
+  .description("Scroll down one screen, then print screen")
+  .action(scrollCmd("down"));
+
+program
+  .command("top")
+  .alias("t")
+  .description("Scroll to top of buffer, then print screen")
+  .action(scrollCmd("top"));
+
+program
+  .command("bottom")
+  .alias("b")
+  .description("Scroll to bottom of buffer, then print screen")
+  .action(scrollCmd("bottom"));
+
+// ---- input ----
+program
+  .command("type <input...>")
+  .description("Type text to the current session (\\n = Enter, \\t = Tab), then print screen when stable")
+  .action(async (inputParts: string[]) => {
+    const res = await sendRequest({ type: "type", input: inputParts.join(" ") });
+    handleResponse(res, (r) => printScreen(r as ScreenResponse));
+  });
+
+program
+  .command("press <key>")
+  .description("Press a key (enter, escape, ctrl+c, arrow_up, …), then print screen when stable")
+  .action(async (key: string) => {
+    const res = await sendRequest({ type: "press", key });
+    handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
 // ---- daemon ----
-const daemonCmd = program
-  .command("daemon")
-  .description("Manage the tui-use daemon (background service)");
+const daemonCmd = program.command("daemon").description("Manage the ttc daemon");
 
-daemonCmd
-  .command("status")
-  .description("Check if the daemon is running")
-  .action(() => {
-    const status = checkDaemonStatus();
-    if (status.running) {
-      console.log(JSON.stringify({ status: "running", pid: status.pid }, null, 2));
-    } else {
-      console.log(JSON.stringify({ status: "stopped" }, null, 2));
-    }
-  });
+daemonCmd.command("status").action(() => {
+  const status = checkDaemonStatus();
+  console.log(JSON.stringify(status.running ? { status: "running", pid: status.pid } : { status: "stopped" }, null, 2));
+});
 
-daemonCmd
-  .command("stop")
-  .description("Stop the daemon")
-  .action(() => {
-    const stopped = stopDaemon();
-    console.log(JSON.stringify({ ok: stopped, message: stopped ? "Daemon stopped" : "Daemon was not running" }, null, 2));
-  });
+daemonCmd.command("stop").action(() => {
+  const stopped = stopDaemon();
+  console.log(JSON.stringify({ ok: stopped }, null, 2));
+});
 
-daemonCmd
-  .command("restart")
-  .description("Restart the daemon")
-  .action(async () => {
-    try {
-      await restartDaemon();
-      const status = checkDaemonStatus();
-      console.log(JSON.stringify({ ok: true, pid: status.pid }, null, 2));
-    } catch (e: unknown) {
-      console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+daemonCmd.command("restart").action(async () => {
+  await restartDaemon();
+  const status = checkDaemonStatus();
+  console.log(JSON.stringify({ ok: true, pid: status.pid }, null, 2));
+});
+
+function scrollCmd(direction: "up" | "down" | "top" | "bottom") {
+  return async () => {
+    const res = await sendRequest({ type: "scroll", direction });
+    handleResponse(res, (r) => printScreen(r as ScreenResponse));
+  };
+}
+
+const WATCH_INTERVAL_MS = 1000;
+const CLEAR_HOME = "\x1b[2J\x1b[H";
+const HIDE_CURSOR = "\x1b[?25l";
+const SHOW_CURSOR = "\x1b[?25h";
+
+function printScreen(r: ScreenResponse): void {
+  if (r.lines.length === 0) return;
+  process.stdout.write(r.lines.join("\n") + "\n");
+}
+
+function writeScreenInPlace(lines: string[]): void {
+  process.stdout.write(CLEAR_HOME);
+  if (lines.length === 0) return;
+  process.stdout.write(lines.join("\n") + "\n");
+}
+
+async function runWatch(): Promise<void> {
+  process.stderr.write("Watching (1s)… Ctrl+C to stop\n");
+  process.stdout.write(HIDE_CURSOR);
+
+  let stopping = false;
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    process.stdout.write(SHOW_CURSOR);
+    process.exit(0);
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
+  while (!stopping) {
+    const res = await sendRequest({ type: "screen", done: false });
+    if (res.type === "error") {
+      process.stdout.write(SHOW_CURSOR);
+      process.stderr.write(`Error: ${(res as ErrorResponse).message}\n`);
       process.exit(1);
     }
-  });
-
-// ---- helpers ----
-
-function printScreen(r: ScreenResponse, format: "pretty" | "json" = "pretty"): void {
-  if (format === "json") {
-    console.log(
-      JSON.stringify(
-        {
-          session_id: r.session_id,
-          screen: r.lines.join("\n"),
-          cursor: r.cursor,
-          changed: r.changed,
-          status: r.status,
-          exit_code: r.exit_code,
-          title: r.title,
-          is_fullscreen: r.is_fullscreen,
-          cols: r.cols,
-          rows: r.rows,
-          highlights: r.highlights,
-        },
-        null,
-        2
-      )
-    );
-    return;
+    writeScreenInPlace((res as ScreenResponse).lines);
+    await sleep(WATCH_INTERVAL_MS);
   }
+}
 
-  // pretty format - use PTY width (matches the actual screen width)
-  const width = r.cols;
-  const header = `─── ${r.session_id} ${"─".repeat(Math.max(0, width - r.session_id.length - 5))}`;
-
-  const info = `${r.status} | cursor(${r.cursor.x},${r.cursor.y}) | fullscreen:${r.is_fullscreen} | title:"${r.title || ""}"`;
-  const footer = `─── ${info} ${"─".repeat(Math.max(0, width - info.length - 5))}`;
-
-  process.stdout.write(header + "\n");
-  for (const line of r.lines) process.stdout.write(line + "\n");
-  process.stdout.write(footer + "\n");
-
-  // Highlights section
-  if (r.highlights.length > 0) {
-    process.stdout.write(`highlights(${r.highlights.length}):\n`);
-    for (const h of r.highlights) {
-      const text = h.text.slice(0, 40) + (h.text.length > 40 ? "..." : "");
-      process.stdout.write(`  L${h.line}: "${text}"\n`);
-    }
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function handleResponse(res: Response, onSuccess: (r: Response) => void): void {

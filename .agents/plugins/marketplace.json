@@ -1,14 +1,14 @@
 {
-  "name": "tui-use-local",
+  "name": "ttc-local",
   "interface": {
-    "displayName": "tui-use local plugins"
+    "displayName": "ttc local plugins"
   },
   "plugins": [
     {
-      "name": "tui-use",
+      "name": "ttc",
       "source": {
         "source": "local",
-        "path": "./plugins/tui-use"
+        "path": "./plugins/ttc"
       },
       "policy": {
         "installation": "AVAILABLE",

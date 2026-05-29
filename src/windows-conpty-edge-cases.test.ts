@@ -28,7 +28,7 @@ describe("Windows ConPTY Edge Cases", () => {
     });
 
     it("daemon session ID should be assigned before first request completes", () => {
-      // The daemon generates a session ID immediately in StartRequest handler
+      // StartRequest requires an explicit session_name (validated in daemon)
       // This ID (e.g. "odd-gecko") must be assigned before the response is sent
       // to avoid race conditions
 
@@ -127,7 +127,7 @@ describe("Windows ConPTY Edge Cases", () => {
       // Node.js handles backpressure automatically
 
       const largeOutput = "x".repeat(65536); // 64KB output
-      const encoded = JSON.stringify({ type: "snapshot", lines: [largeOutput] }) + "\n";
+      const encoded = JSON.stringify({ type: "screen", lines: [largeOutput] }) + "\n";
 
       expect(encoded.length).toBeGreaterThan(65536);
     });
@@ -137,7 +137,7 @@ describe("Windows ConPTY Edge Cases", () => {
       // A message containing newlines must be JSON-encoded properly
 
       const message = {
-        type: "snapshot",
+        type: "screen",
         lines: ["line1\nline2\nline3"],
       };
 
@@ -248,7 +248,7 @@ describe("Windows ConPTY Edge Cases", () => {
       // If TCP coalesces messages, the line-split handles it
 
       const msg1 = { type: "use", session_id: "test" };
-      const msg2 = { type: "snapshot" };
+      const msg2 = { type: "screen" };
 
       const data = JSON.stringify(msg1) + "\n" + JSON.stringify(msg2) + "\n";
       const lines = data.split("\n").filter(l => l.trim());

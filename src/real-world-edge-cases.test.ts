@@ -282,7 +282,7 @@ describe("Real-World Edge Cases from Production REPLs & TUIs", () => {
 
     it("should preserve session state across long interactions", () => {
       // REPLs maintain variables/state across many commands
-      // Expected: state not corrupted by tui-use interaction
+      // Expected: state not corrupted by ttc interaction
 
       const sessionState = { x: 1, y: 2 };
       expect(Object.keys(sessionState)).toHaveLength(2);

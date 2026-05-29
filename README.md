@@ -1,20 +1,20 @@
 <div align="center">
 
-# tui-use
+# ttc
 
 **Like BrowserUse, but for the terminal.**
 
-tui-use lets agents interact with programs that expect a human at the keyboard — REPLs, debuggers, TUI apps, and anything else bash can't reach.
+ttc lets agents interact with programs that expect a human at the keyboard — REPLs, debuggers, TUI apps, and anything else bash can't reach.
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/tui-use.svg)](https://www.npmjs.com/package/tui-use)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/tui-tool-call.svg)](https://www.npmjs.com/package/tui-tool-call)
 
 </div>
 
-## What is tui-use?
+## What is ttc?
 
 AI agents can run shell commands and call APIs — but they can't interact with programs that expect a human at the keyboard. The moment a REPL waits for input, a debugger hits a breakpoint, or a TUI app renders a menu, agents are stuck.
 
-tui-use fills that gap. Spawn any program in a PTY, read its screen as plain text, send keystrokes — all from the command line. Built for the cases where bash isn't enough: live debugging sessions with gigabytes of in-memory state, interactive REPLs, full-screen TUI apps.
+ttc fills that gap. Spawn any program in a PTY, read its screen as plain text, send keystrokes — all from the command line. Built for the cases where bash isn't enough: live debugging sessions with gigabytes of in-memory state, interactive REPLs, full-screen TUI apps.
 
 ### Use cases
 
@@ -31,28 +31,28 @@ tmux is great for humans — but it was never designed for agents.
 
 `tmux send-keys` has no way to signal when a program is done responding. Agents are stuck guessing: `sleep 2` and hope, or poll `capture-pane` in a loop.
 
-tui-use observes every PTY render event directly. `wait` blocks until the screen stabilizes — no sleep, no polling. `wait --text ">>>"` goes further: wait for a semantic signal, not just silence.
+ttc observes every PTY render event directly. `done` blocks until the screen stabilizes — no sleep, no polling.
 
 ## Features
 
-- **🖥️ Full VT Rendering** — PTY output is processed by a headless xterm emulator. ANSI escape sequences, cursor movement, and screen clearing all work correctly. The `screen` field is always clean plain text.
-- **⏱️ Smart Wait** — `wait` blocks until the screen has been stable for a configurable idle window (debounce), so agents never need to guess how long to sleep. Use `wait --text <pattern>` for semantic signals — wait until the program tells you it's ready, not just until it goes quiet.
-- **📸 Snapshot Model** — Interacting with a terminal program is just a loop: read what's on screen, decide what to type, repeat. tui-use makes that loop explicit — no async streams, no timing guesswork, no partial output to reassemble.
-- **🔍 Highlights** — Every snapshot includes a `highlights` field listing the inverse-video spans on screen — the standard way TUI programs indicate selected items. Agents can read which menu option, tab, or button is currently active without parsing text or guessing from cursor position.
+- **🖥️ Full VT Rendering** — PTY output is processed by a headless xterm emulator. ANSI escape sequences and screen clearing all work correctly. Output is always clean plain text.
+- **⏱️ Smart Wait** — `done` blocks until the screen has been stable (100ms debounce, 3s timeout).
+- **📸 Screen Model** — `now` to read, `type`/`press` to act, `done` to confirm, repeat.
+- **🔍 TUI selection** — Read which menu option, tab, or button is active directly from the rendered text on screen.
 
 ## Installation
 
 **From npm (recommended):**
 
 ```bash
-npm install -g tui-use
+npm install -g tui-tool-call
 ```
 
 **From source:**
 
 ```bash
-git clone https://github.com/onesuper/tui-use.git
-cd tui-use
+git clone https://github.com/onesuper/tui-tool-call.git
+cd tui-tool-call
 npm install
 npm run build
 npm link
@@ -62,7 +62,7 @@ npm link
 
 **Note:** You must install the CLI (see Installation section above) before using the plugin — the plugin only provides skill definitions, the CLI provides the actual PTY functionality.
 
-This repo includes a Codex plugin bundle at `plugins/tui-use` and a local repo marketplace at `.agents/plugins/marketplace.json`.
+This repo includes a Codex plugin bundle at `plugins/ttc` and a local repo marketplace at `.agents/plugins/marketplace.json`.
 
 ### Install from this repo
 
@@ -79,11 +79,11 @@ codex
 
 #### Step 3: Install the plugin
 
-Choose the `tui-use local plugins` marketplace, open `tui-use`, and select `Install plugin`.
+Choose the `ttc local plugins` marketplace, open `ttc`, and select `Install plugin`.
 
 #### Step 4: Start a new thread
 
-Ask Codex to use `tui-use`, or explicitly invoke the installed plugin/skill from the prompt.
+Ask Codex to use `ttc`, or explicitly invoke the installed plugin/skill from the prompt.
 
 ## Claude Code Plugin
 
@@ -94,13 +94,13 @@ Ask Codex to use `tui-use`, or explicitly invoke the installed plugin/skill from
 #### Step 1: Add the marketplace
 
 ```
-/plugin marketplace add onesuper/tui-use
+/plugin marketplace add onesuper/tui-tool-call
 ```
 
 #### Step 2: Install the plugin
 
 ```
-/plugin install tui-use@tui-use
+/plugin install ttc@ttc
 ```
 
 #### Step 3: Reload plugins
@@ -113,17 +113,15 @@ Ask Codex to use `tui-use`, or explicitly invoke the installed plugin/skill from
 
 ## How It Works
 
-tui-use sits directly on the PTY event stream — every byte the program outputs flows through a headless terminal emulator in real time.
+ttc sits directly on the PTY event stream — every byte the program outputs flows through a headless terminal emulator in real time.
 
-This is what makes `wait` possible:
+This is what makes `done` possible:
 
 ```
 program outputs → PTY → xterm emulator → render event
                                         → debounce timer resets on each change
-                                        → 100ms of silence → wait resolves ✓
+                                        → 100ms of silence → screen prints ✓
 ```
-
-`wait --text <pattern>` goes further — it resolves the moment a known prompt appears, giving agents a semantic readiness signal rather than just a silence window.
 
 Behind the scenes, a daemon process manages PTY sessions so they persist across CLI calls.
 
@@ -132,40 +130,32 @@ Behind the scenes, a daemon process manages PTY sessions so they persist across 
 ### Core Commands
 
 ```
-tui-use start <cmd>                            # Start a program
-tui-use start --cwd <dir> <cmd>                # Start in specific directory
-tui-use start --cwd <dir> "<cmd> -flags"       # Quote the full command to pass flags (e.g. git rebase -i)
-tui-use start --label <name> <cmd>             # Start with label
-tui-use start --cols <n> --rows <n> <cmd>      # Custom terminal size (default: 120x30)
-tui-use use <session_id>                       # Switch to a session
-tui-use type <text>                            # Type text
-tui-use type "<text>\n"                        # Type with Enter
-tui-use type "<text>\t"                        # Type with Tab
-tui-use paste "<text>\n<text>\n"               # Multi-line paste (each line + Enter)
-tui-use press <key>                            # Press a key
-tui-use snapshot                               # Get current screen
-tui-use snapshot --format json                 # JSON output
-tui-use scrollup <n>                           # Scroll up to older content
-tui-use scrolldown <n>                         # Scroll down to newer content
-tui-use find <pattern>                         # Search in screen (regex)
-tui-use wait                                   # Wait for screen change (default timeout: 3000ms)
-tui-use wait <ms>                              # Custom timeout, e.g. wait 5000
-tui-use wait --text <pattern>                  # Wait until screen contains pattern
-tui-use wait --debounce <ms>                   # Idle time after last change before resolving (default: 100ms)
-tui-use wait --format json                     # JSON output
-tui-use list                                   # List all sessions
-tui-use use <session_id>                       # Switch to a session
-tui-use info                                   # Show session details
-tui-use rename <label>                         # Rename session
-tui-use kill                                   # Kill current session
-tui-use daemon status                          # Check if daemon is running
-tui-use daemon stop                            # Stop the daemon
-tui-use daemon restart                         # Restart the daemon
+ttc start <session-name> <cmd>             # Start a named session (required; never auto-generated)
+ttc start --cwd <dir> <session-name> <cmd> # Start in specific directory
+ttc start temp-work "<cmd> -flags"         # Short tools: reuse temp-work via ttc use
+ttc start --cols <n> --rows <n> <name> <cmd>  # Custom terminal size (default: 120x30)
+ttc use <session-name>                     # Switch to a session
+ttc now                                    # Print current screen
+ttc done                                   # Wait until stable, print screen
+ttc watch                                  # Refresh now every 1s in-place (Ctrl+C)
+ttc u                                      # Scroll up one screen
+ttc d                                      # Scroll down one screen
+ttc t                                      # Scroll to top
+ttc b                                      # Scroll to bottom
+ttc type <text>                            # Type text, then print screen when stable
+ttc press <key>                            # Press key, then print screen when stable
+ttc list                                   # List all sessions
+ttc info                                   # Show session details
+ttc rename <label>                         # Rename session
+ttc kill                                   # Kill current session
+ttc daemon status                          # Check if daemon is running
+ttc daemon stop                            # Stop the daemon
+ttc daemon restart                         # Restart the daemon
 ```
 
 ## Limitations
 
-- **TUI color/style info is mostly lost** — `screen` contains plain text only; colors and most formatting are stripped. Selected items and active elements are captured in `highlights` via inverse-video detection. Window title and fullscreen mode are captured in `title` and `is_fullscreen`.
+- **TUI color/style info is mostly lost** — output is plain text only; colors and most formatting are stripped. Read selection/state directly from the rendered text on screen.
 
 ## Troubleshooting
 
@@ -183,18 +173,18 @@ The installer automatically detects your platform and uses a prebuilt binary whe
 
 ```bash
 git clone <repo_url>
-cd tui-use
+cd tui-tool-call
 npm install
 npm run build
 npm link
 
 # Try it
-tui-use start python3 examples/ask.py
-tui-use wait
-tui-use type "Alice"
-tui-use press enter
-tui-use wait
-tui-use kill
+ttc start temp-work python3 examples/ask.py
+ttc done
+ttc type "Alice"
+ttc press enter
+ttc done
+ttc kill
 ```
 
 ### Integration Tests
@@ -204,7 +194,7 @@ A Claude Code skill is included for running the full integration test suite.
 Run the following command in Claude Code:
 
 ```
-/tui-use-integration-test
+/ttc-integration-test
 ```
 
 Claude will execute the test suite in order and then report `PASS / FAIL` for each, with actual screen output on any failure.
