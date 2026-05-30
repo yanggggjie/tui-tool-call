@@ -1,451 +1,63 @@
 /**
- * ttc/src/daemon.ts
- *
- * Background daemon process. Manages PTY sessions, listens on Unix socket.
- * Auto-exits when all sessions have been dead for IDLE_TIMEOUT_MS.
- *
- * Run directly: node dist/daemon.js
- * Usually auto-started by client.ts when needed.
+ * ttc daemon entry point.
  */
-import * as net from "net";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { Session, validateCwd, validateSessionName } from "./session";
-import {
-  Request,
-  Response,
-  StartRequest,
-  ScreenRequest,
-  TypeRequest,
-  PressRequest,
-  KillRequest,
-  ScrollRequest,
-  StreamSubscribeRequest,
-  StreamUnsubscribeRequest,
-  ScreenResponse,
-} from "./protocol";
+import { armIdleTimer, killAllSessions } from "./rpc";
+import { startHttpServer } from "./http-server";
 
-const WAIT_MS = 3000;
-const DEBOUNCE_MS = 100;
-
-const TERMLINK_DIR = path.join(os.homedir(), ".ttc");
-export const SOCKET_PATH = path.join(TERMLINK_DIR, "daemon.sock");
+export const TERMLINK_DIR = path.join(os.homedir(), ".ttc");
 export const PID_PATH = path.join(TERMLINK_DIR, "daemon.pid");
+export const DAEMON_HOST = "127.0.0.1";
 export const DAEMON_PORT = 7654;
+export const DAEMON_URL = `http://${DAEMON_HOST}:${DAEMON_PORT}`;
 
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
-// Platform-aware server listening configuration
-function startServerListener(server: net.Server, callback: () => void): void {
-  if (process.platform === "win32") {
-    server.listen(DAEMON_PORT, callback);
-  } else {
-    server.listen(SOCKET_PATH, callback);
-  }
-}
-
-// ---- Session registry ----
-
-const sessions = new Map<string, Session>();
-/** Names currently in `start` handler (before session is registered). */
-const startingSessions = new Set<string>();
-let idleTimer: NodeJS.Timeout | null = null;
-
-function resetIdleTimer() {
-  if (idleTimer) clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => {
-    const allDead = [...sessions.values()].every(
-      (s) => s.status === "exited"
-    );
-    if (allDead) {
-      process.exit(0);
-    }
-  }, IDLE_TIMEOUT_MS);
-  idleTimer.unref(); // don't prevent process exit if nothing else is running
-}
-
-function getSession(name: string): Session | Response {
-  const nameErr = validateSessionName(name);
-  if (nameErr) return { type: "error", message: nameErr };
-  const session = sessions.get(name);
-  if (!session) {
-    return { type: "error", message: `Session not found: ${name}` };
-  }
-  return session;
-}
-
-const SESSION_IN_USE_HINT = (name: string) =>
-  `Session "${name}" is already in use. Use a different session name, or run 'ttc kill ${name}' first.`;
-
-/** Returns an error response if the name is in use; otherwise removes stale exited sessions. */
-function checkSessionNameAvailable(name: string): Response | null {
-  if (startingSessions.has(name)) {
-    return {
-      type: "error",
-      message: SESSION_IN_USE_HINT(name),
-    };
-  }
-
-  const existing = sessions.get(name);
-  if (!existing) return null;
-
-  if (existing.status === "running") {
-    return {
-      type: "error",
-      message: SESSION_IN_USE_HINT(name),
-    };
-  }
-
-  sessions.delete(name);
-  return null;
-}
-
-function screenResponse(
-  session: Session,
-  sessionName: string,
-  responseType: ScreenResponse["type"],
-  snap: ReturnType<Session["snapshot"]>
-): ScreenResponse {
-  return {
-    type: responseType,
-    session_name: sessionName,
-    lines: snap.lines,
-    changed: snap.changed,
-    status: session.status,
-    exit_code: session.exitCode,
-    title: snap.title,
-    is_fullscreen: snap.is_fullscreen,
-    cols: session.cols,
-    rows: session.rows,
-  };
-}
-
-async function doneSnapshot(session: Session): Promise<ReturnType<Session["snapshot"]>> {
-  await session.wait(WAIT_MS, undefined, DEBOUNCE_MS);
-  return session.snapshot();
-}
-
-// ---- PTY stream subscriptions (for ttc watch) ----
-
-interface StreamSubscription {
-  unsubscribeData: () => void;
-  unsubscribeExit: () => void;
-}
-
-interface SocketStreamState {
-  subscriptions: Map<string, StreamSubscription>;
-}
-
-function writeSocketLine(socket: net.Socket, payload: object): void {
-  socket.write(JSON.stringify(payload) + "\n");
-}
-
-function unsubscribeSessionStream(state: SocketStreamState, sessionName: string): void {
-  const sub = state.subscriptions.get(sessionName);
-  if (!sub) return;
-  sub.unsubscribeData();
-  sub.unsubscribeExit();
-  state.subscriptions.delete(sessionName);
-}
-
-function cleanupSocketStreams(state: SocketStreamState): void {
-  for (const sessionName of [...state.subscriptions.keys()]) {
-    unsubscribeSessionStream(state, sessionName);
-  }
-}
-
-function handleStreamSubscribe(
-  socket: net.Socket,
-  state: SocketStreamState,
-  req: StreamSubscribeRequest
-): void {
-  unsubscribeSessionStream(state, req.session_name);
-
-  const sessionOrError = getSession(req.session_name);
-  if ("type" in sessionOrError && sessionOrError.type === "error") {
-    writeSocketLine(socket, sessionOrError);
-    return;
-  }
-
-  const session = sessionOrError as Session;
-  const sessionName = req.session_name;
-
-  const unsubscribeData = session.onStream((data) => {
-    writeSocketLine(socket, { type: "stream_data", session_name: sessionName, data });
-  });
-
-  const unsubscribeExit = session.onExit((exitCode) => {
-    writeSocketLine(socket, { type: "stream_end", session_name: sessionName, exit_code: exitCode });
-    unsubscribeSessionStream(state, sessionName);
-  });
-
-  state.subscriptions.set(sessionName, { unsubscribeData, unsubscribeExit });
-
-  writeSocketLine(socket, {
-    type: "stream_subscribed",
-    session_name: sessionName,
-    replay: session.getStreamReplay(),
-    cols: session.cols,
-    rows: session.rows,
-    status: session.status,
-    exit_code: session.exitCode,
-  });
-
-  if (session.status === "exited") {
-    writeSocketLine(socket, {
-      type: "stream_end",
-      session_name: sessionName,
-      exit_code: session.exitCode,
-    });
-    unsubscribeSessionStream(state, sessionName);
-  }
-}
-
-function handleStreamUnsubscribe(
-  state: SocketStreamState,
-  req: StreamUnsubscribeRequest
-): void {
-  unsubscribeSessionStream(state, req.session_name);
-}
-
-// ---- Request handlers ----
-
-async function handleRequest(req: Request): Promise<Response> {
-  switch (req.type) {
-    case "start": {
-      const r = req as StartRequest;
-      const nameErr = validateSessionName(r.session_name);
-      if (nameErr) return { type: "error", message: nameErr };
-
-      if (!Array.isArray(r.command) || r.command.length === 0) {
-        return { type: "error", message: "command required (e.g. npm run dev)" };
-      }
-
-      const cwdErr = validateCwd(r.cwd);
-      if (cwdErr) return { type: "error", message: cwdErr };
-
-      const unavailable = checkSessionNameAvailable(r.session_name);
-      if (unavailable) return unavailable;
-
-      startingSessions.add(r.session_name);
-      try {
-        const session = new Session(r.session_name, r.command, {
-          cwd: path.resolve(r.cwd),
-        });
-        sessions.set(r.session_name, session);
-        resetIdleTimer();
-        const snap = await doneSnapshot(session);
-        return screenResponse(session, r.session_name, "start", snap);
-      } finally {
-        startingSessions.delete(r.session_name);
-      }
-    }
-
-    case "screen": {
-      const r = req as ScreenRequest;
-      const sessionOrError = getSession(r.session_name);
-      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      const snap = r.done ? await doneSnapshot(session) : session.snapshot();
-      return screenResponse(session, r.session_name, "screen", snap);
-    }
-
-    case "type": {
-      const r = req as TypeRequest;
-      const sessionOrError = getSession(r.session_name);
-      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      try {
-        session.send(r.input);
-        const snap = await doneSnapshot(session);
-        return screenResponse(session, r.session_name, "type", snap);
-      } catch (e: unknown) {
-        return {
-          type: "error",
-          message: e instanceof Error ? e.message : String(e),
-        };
-      }
-    }
-
-    case "press": {
-      const r = req as PressRequest;
-      const sessionOrError = getSession(r.session_name);
-      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      try {
-        session.press(r.sequence);
-        const snap = await doneSnapshot(session);
-        return screenResponse(session, r.session_name, "press", snap);
-      } catch (e: unknown) {
-        return {
-          type: "error",
-          message: e instanceof Error ? e.message : String(e),
-        };
-      }
-    }
-
-    case "kill": {
-      const r = req as KillRequest;
-      const sessionOrError = getSession(r.session_name);
-      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      session.kill();
-      sessions.delete(r.session_name);
-      resetIdleTimer();
-      return { type: "kill", ok: true };
-    }
-
-    case "list": {
-      const list = [...sessions.values()].map((s) => s.toInfo());
-      return { type: "list", sessions: list };
-    }
-
-    case "scroll": {
-      const r = req as ScrollRequest;
-      const sessionOrError = getSession(r.session_name);
-      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      session.scroll(r.direction);
-      return screenResponse(session, r.session_name, "scroll", session.snapshot());
-    }
-
-    default: {
-      return { type: "error", message: "Unknown request type" };
-    }
-  }
-}
-
-// ---- Socket server ----
-
-function startServer() {
+function startDaemon(): void {
   fs.mkdirSync(TERMLINK_DIR, { recursive: true });
 
-  // Clean up stale socket (Unix only)
-  if (process.platform !== "win32" && fs.existsSync(SOCKET_PATH)) {
-    fs.unlinkSync(SOCKET_PATH);
-  }
-
-  const server = net.createServer((socket) => {
-    let buffer = "";
-    const streamState: SocketStreamState = { subscriptions: new Map() };
-
-    socket.on("data", (data) => {
-      buffer += data.toString();
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        let req: Request;
-        try {
-          req = JSON.parse(line) as Request;
-        } catch {
-          writeSocketLine(socket, { type: "error", message: "Invalid JSON" });
-          continue;
-        }
-
-        if (req.type === "stream_subscribe") {
-          handleStreamSubscribe(socket, streamState, req as StreamSubscribeRequest);
-          continue;
-        }
-        if (req.type === "stream_unsubscribe") {
-          handleStreamUnsubscribe(streamState, req as StreamUnsubscribeRequest);
-          continue;
-        }
-
-        handleRequest(req).then((res) => {
-          try {
-            writeSocketLine(socket, res);
-          } catch (writeErr) {
-            const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
-            process.stderr.write(`[daemon] failed to write response: ${msg}\n`);
-          }
-        }).catch((err) => {
-          const errMsg = err instanceof Error ? err.stack ?? err.message : String(err);
-          process.stderr.write(`[daemon] handleRequest error: ${errMsg}\n`);
-          try {
-            writeSocketLine(socket, {
-              type: "error",
-              message: String(err instanceof Error ? err.message : err),
-            });
-          } catch (writeErr) {
-            const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
-            process.stderr.write(`[daemon] failed to write error response: ${msg}\n`);
-          }
-        });
-      }
-    });
-
-    socket.on("close", () => {
-      cleanupSocketStreams(streamState);
-    });
-
-    socket.on("error", (err) => {
-      // Log errors but don't crash - client may have disconnected abruptly
-      if ((err as NodeJS.ErrnoException).code !== "ECONNRESET") {
-        process.stderr.write(`[daemon] socket error: ${err.message}\n`);
-      }
-    });
-  });
-
-  startServerListener(server, () => {
+  const server = startHttpServer();
+  server.listen(DAEMON_PORT, DAEMON_HOST, () => {
     fs.writeFileSync(PID_PATH, String(process.pid));
-    const listenTarget = process.platform === "win32" ? `port ${DAEMON_PORT}` : SOCKET_PATH;
-    process.stderr.write(`ttc daemon started (pid=${process.pid}, listening on ${listenTarget})\n`);
+    process.stderr.write(`ttc daemon started (pid=${process.pid}, ${DAEMON_URL})\n`);
   });
 
   server.on("error", (err: NodeJS.ErrnoException) => {
     let message = `daemon error: ${err.message}`;
-
-    // Windows-specific error guidance
-    if (process.platform === "win32" && err.code === "EADDRINUSE") {
+    if (err.code === "EADDRINUSE") {
       message += `\n  Port ${DAEMON_PORT} is already in use.`;
-    } else if (process.platform === "win32" && err.code === "EACCES") {
-      message += `\n  Permission denied on port ${DAEMON_PORT}. Try running with elevated privileges.`;
+    } else if (err.code === "EACCES") {
+      message += `\n  Permission denied on port ${DAEMON_PORT}.`;
     }
-
     process.stderr.write(`${message}\n`);
     process.exit(1);
   });
 
-  // Graceful shutdown: kill all sessions and clean up
-  function gracefulShutdown() {
-    for (const session of sessions.values()) {
-      try {
-        session.kill();
-      } catch {
-        /* session may already be dead */
-      }
-    }
+  function shutdown(): void {
+    killAllSessions();
     process.exit(0);
   }
 
-  // Cleanup on exit
   process.on("exit", () => {
     try {
-      if (process.platform !== "win32") fs.unlinkSync(SOCKET_PATH);
       fs.unlinkSync(PID_PATH);
     } catch {
       /* ignore */
     }
   });
 
-  // Signal handling (Windows: SIGTERM/SIGINT may not fire, but process can be terminated)
   for (const sig of ["SIGTERM", "SIGINT"] as const) {
-    process.on(sig, gracefulShutdown);
+    process.on(sig, shutdown);
   }
 
-  // Windows: handle uncaught exceptions gracefully
   process.on("uncaughtException", (err) => {
     process.stderr.write(`[daemon] uncaught exception: ${err.message}\n`);
-    gracefulShutdown();
+    shutdown();
   });
 
-  resetIdleTimer();
+  armIdleTimer();
 }
 
-// ---- Entry point (when run directly) ----
 if (require.main === module) {
-  startServer();
+  startDaemon();
 }

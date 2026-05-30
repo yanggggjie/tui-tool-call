@@ -121,7 +121,7 @@ program outputs → PTY → xterm emulator → render event
                                         → 100ms of silence → screen prints ✓
 ```
 
-Behind the scenes, sessions persist across CLI calls until killed or idle-timeout.
+Behind the scenes, a background daemon on `http://127.0.0.1:7654` manages PTY sessions until killed or idle-timeout. CLI commands use `POST /rpc`; `ttc watch` opens the dashboard at the same URL.
 
 ## CLI Interface
 
@@ -146,7 +146,7 @@ ttc list                         # List all sessions
 ttc kill <session>               # Kill a session
 ```
 
-`ttc watch` prints a `http://127.0.0.1:…` URL and keeps running until Ctrl+C. It requires an interactive terminal (TTY) and is blocked for non-human callers.
+`ttc watch` prints `http://127.0.0.1:7654` and keeps running until Ctrl+C (the daemon and dashboard stay up). It requires an interactive terminal (TTY) and is blocked for non-human callers.
 
 ## Limitations
 
