@@ -18,6 +18,8 @@ export type Request =
 export interface StartRequest {
   type: "start";
   session_name: string;
+  command: string[];
+  cwd: string;
 }
 
 /** now: done=false, done: done=true */

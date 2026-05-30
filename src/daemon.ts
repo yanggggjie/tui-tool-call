@@ -11,7 +11,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { Session, validateSessionName } from "./session";
+import { Session, validateCwd, validateSessionName } from "./session";
 import {
   Request,
   Response,
@@ -218,12 +218,21 @@ async function handleRequest(req: Request): Promise<Response> {
       const nameErr = validateSessionName(r.session_name);
       if (nameErr) return { type: "error", message: nameErr };
 
+      if (!Array.isArray(r.command) || r.command.length === 0) {
+        return { type: "error", message: "command required (e.g. npm run dev)" };
+      }
+
+      const cwdErr = validateCwd(r.cwd);
+      if (cwdErr) return { type: "error", message: cwdErr };
+
       const unavailable = checkSessionNameAvailable(r.session_name);
       if (unavailable) return unavailable;
 
       startingSessions.add(r.session_name);
       try {
-        const session = new Session(r.session_name);
+        const session = new Session(r.session_name, r.command, {
+          cwd: path.resolve(r.cwd),
+        });
         sessions.set(r.session_name, session);
         resetIdleTimer();
         const snap = await doneSnapshot(session);

@@ -130,7 +130,8 @@ Behind the scenes, sessions persist across CLI calls until killed or idle-timeou
 Every command that touches a session requires `<session>` (letters/digits only, e.g. `dev`, `tempwork`, `agent`).
 
 ```
-ttc start <session>              # Start bash, wait until stable, print screen
+ttc start <session> <command...>   # Start program, wait until stable, print screen
+ttc start <session> --cwd <path> <command...>  # Start in a specific directory
 ttc now <session>                # Print current screen
 ttc done <session>               # Wait until stable, print screen
 ttc watch                        # Human-only: local web UI for all sessions (read-only)
@@ -149,6 +150,7 @@ ttc kill <session>               # Kill a session
 
 ## Limitations
 
+- **`start` runs programs directly** — no shell; pipes, redirects, and `&&` are not supported.
 - **TUI color/style info is mostly lost in agent CLI output** — `now` / `done` return plain text; `ttc watch` preserves ANSI via xterm.js.
 
 ## Troubleshooting
@@ -171,9 +173,7 @@ npm run build
 npm link
 
 # Try it
-ttc start tempwork
-ttc type tempwork "python3 examples/ask.py"
-ttc press tempwork enter
+ttc start tempwork python3 examples/ask.py
 ttc type tempwork "Alice"
 ttc press tempwork enter
 ttc kill tempwork

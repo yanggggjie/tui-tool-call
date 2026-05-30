@@ -65,7 +65,7 @@ async function fetchSessions(): Promise<ListResponse["sessions"]> {
 
 function renderTabsPartial(sessions: ListResponse["sessions"], active?: string): string {
   if (sessions.length === 0) {
-    return `<p class="empty">No active sessions. Start one with <code>ttc start &lt;name&gt;</code>.</p>`;
+    return `<p class="empty">No active sessions. Start one with <code>ttc start &lt;name&gt; &lt;command...&gt;</code>.</p>`;
   }
 
   const tabs = sessions

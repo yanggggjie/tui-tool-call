@@ -6,6 +6,8 @@
  * the terminal emulator, and `snapshot()` reads back the rendered screen.
  * This makes ANSI escape sequences, colors, and screen updates transparent.
  */
+import * as fs from "fs";
+import * as path from "path";
 import * as pty from "@homebridge/node-pty-prebuilt-multiarch";
 import { Terminal } from "@xterm/headless";
 import { SessionInfo } from "./protocol";
@@ -22,6 +24,21 @@ export function validateSessionName(name: string): string | null {
       `invalid session name "${name}": use letters and digits only ` +
       "(e.g. dev, tempwork, agent)"
     );
+  }
+  return null;
+}
+
+export function validateCwd(cwd: string): string | null {
+  if (!cwd?.trim()) {
+    return "cwd is required";
+  }
+  const resolved = path.resolve(cwd);
+  try {
+    if (!fs.statSync(resolved).isDirectory()) {
+      return `not a directory: ${cwd}`;
+    }
+  } catch {
+    return `directory not found: ${cwd}`;
   }
   return null;
 }
@@ -172,9 +189,6 @@ export function hasChanged(
   );
 }
 
-/** Default interactive shell spawned by `ttc start`. */
-export const DEFAULT_SHELL = "bash";
-
 export class Session {
   readonly name: string;
   readonly command: string;
@@ -196,14 +210,16 @@ export class Session {
 
   constructor(
     name: string,
-    options: { cwd?: string; cols?: number; rows?: number } = {}
+    command: string[],
+    options: { cwd: string; cols?: number; rows?: number }
   ) {
     this.name = name;
-    this.command = DEFAULT_SHELL;
+    this.command = command.join(" ");
     this.startTime = Date.now();
 
     const cols = options.cols ?? 120;
     const rows = options.rows ?? 30;
+    const [file, ...args] = command;
 
     this.terminal = new Terminal({ cols, rows, allowProposedApi: true, scrollback: 10000 });
 
@@ -220,11 +236,11 @@ export class Session {
       this.notifyListeners();
     });
 
-    this.ptyProcess = pty.spawn(DEFAULT_SHELL, [], {
+    this.ptyProcess = pty.spawn(file, args, {
       name: "xterm-256color",
       cols,
       rows,
-      cwd: options.cwd ?? process.cwd(),
+      cwd: options.cwd,
       env: process.env as { [key: string]: string },
     });
 

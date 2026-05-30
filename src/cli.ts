@@ -2,6 +2,7 @@
 /**
  * ttc CLI
  */
+import * as path from "path";
 import { Command } from "commander";
 import { sendRequest } from "./client";
 import { validateSessionName } from "./session";
@@ -26,13 +27,22 @@ function exitOnBadSessionName(name: string): void {
 
 // ---- session ----
 program
-  .command("start <session-name>")
-  .description("Start bash in the current directory, then print screen when stable")
-  .action(async (sessionName: string) => {
+  .command("start <session-name> <command...>")
+  .description("Start a program in a PTY, then print screen when stable")
+  .option("-C, --cwd <path>", "Working directory (default: current directory)")
+  .action(async (sessionName: string, command: string[], options: { cwd?: string }) => {
     exitOnBadSessionName(sessionName);
+    if (command.length === 0) {
+      process.stderr.write(
+        "Error: command required. Example: ttc start dev npm run dev\n"
+      );
+      process.exit(1);
+    }
     const res = await sendRequest({
       type: "start",
       session_name: sessionName,
+      command,
+      cwd: path.resolve(options.cwd ?? process.cwd()),
     });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
