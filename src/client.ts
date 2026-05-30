@@ -7,7 +7,6 @@
 import * as net from "net";
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import * as child_process from "child_process";
 import { SOCKET_PATH, PID_PATH, DAEMON_PORT } from "./daemon";
 import { Request, Response } from "./protocol";
@@ -74,10 +73,9 @@ async function startDaemon(): Promise<void> {
 
   let msg = `Daemon failed to start after ${DAEMON_START_TIMEOUT_MS}ms`;
   if (process.platform === "win32") {
-    msg += `\n  Check if another daemon is running on port ${DAEMON_PORT}: netstat -ano | findstr :${DAEMON_PORT}`;
-    msg += `\n  Or try: ttc daemon stop`;
+    msg += `\n  Check if port ${DAEMON_PORT} is in use: netstat -ano | findstr :${DAEMON_PORT}`;
   } else {
-    msg += `\n  Check daemon stderr for errors`;
+    msg += `\n  Check stderr for errors`;
   }
   throw new Error(msg);
 }
@@ -133,13 +131,13 @@ function sendToDaemon(req: Request): Promise<Response> {
       // Windows-specific error guidance
       if (process.platform === "win32") {
         if (e.code === "ECONNREFUSED") {
-          message += `\n  Could not connect to daemon on port ${DAEMON_PORT}. Try: ttc daemon stop`;
+          message += `\n  Could not connect on port ${DAEMON_PORT}`;
         } else if (e.code === "EACCES") {
           message += `\n  Permission denied connecting to daemon. Try running with elevated privileges.`;
         }
       } else {
         if (e.code === "ECONNREFUSED") {
-          message += `\n  Could not connect to daemon socket at ${SOCKET_PATH}`;
+          message += `\n  Could not connect to socket at ${SOCKET_PATH}`;
         }
       }
 
@@ -157,43 +155,4 @@ function sendToDaemon(req: Request): Promise<Response> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Check if daemon is running without starting it */
-export function checkDaemonStatus(): { running: boolean; pid?: number } {
-  if ((process.platform !== "win32" && !fs.existsSync(SOCKET_PATH)) || !fs.existsSync(PID_PATH)) {
-    return { running: false };
-  }
-  try {
-    const pid = parseInt(fs.readFileSync(PID_PATH, "utf-8").trim(), 10);
-    process.kill(pid, 0);
-    return { running: true, pid };
-  } catch {
-    return { running: false };
-  }
-}
-
-/** Stop the daemon */
-export function stopDaemon(): boolean {
-  const status = checkDaemonStatus();
-  if (!status.running) {
-    return false;
-  }
-  try {
-    process.kill(status.pid!, "SIGTERM");
-    // Clean up files
-    if (process.platform !== "win32") {
-      try { fs.unlinkSync(SOCKET_PATH); } catch {}
-    }
-    try { fs.unlinkSync(PID_PATH); } catch {}
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Restart the daemon */
-export async function restartDaemon(): Promise<void> {
-  stopDaemon();
-  await startDaemon();
 }

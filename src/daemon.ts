@@ -20,7 +20,6 @@ import {
   TypeRequest,
   PressRequest,
   KillRequest,
-  UseRequest,
   ScrollRequest,
   ScreenResponse,
 } from "./protocol";
@@ -47,12 +46,9 @@ function startServerListener(server: net.Server, callback: () => void): void {
 // ---- Session registry ----
 
 const sessions = new Map<string, Session>();
+/** Names currently in `start` handler (before session is registered). */
+const startingSessions = new Set<string>();
 let idleTimer: NodeJS.Timeout | null = null;
-let currentSession: string | null = null;
-
-function setCurrentSession(id: string | null): void {
-  currentSession = id;
-}
 
 function resetIdleTimer() {
   if (idleTimer) clearTimeout(idleTimer);
@@ -67,26 +63,51 @@ function resetIdleTimer() {
   idleTimer.unref(); // don't prevent process exit if nothing else is running
 }
 
-function getCurrentSession(): Session | Response {
-  if (!currentSession) {
-    return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
-  }
-  const session = sessions.get(currentSession);
+function getSession(name: string): Session | Response {
+  const nameErr = validateSessionName(name);
+  if (nameErr) return { type: "error", message: nameErr };
+  const session = sessions.get(name);
   if (!session) {
-    return { type: "error", message: `Session not found: ${currentSession}` };
+    return { type: "error", message: `Session not found: ${name}` };
   }
   return session;
 }
 
+const SESSION_IN_USE_HINT = (name: string) =>
+  `Session "${name}" is already in use. Use a different session name, or run 'ttc kill ${name}' first.`;
+
+/** Returns an error response if the name is in use; otherwise removes stale exited sessions. */
+function checkSessionNameAvailable(name: string): Response | null {
+  if (startingSessions.has(name)) {
+    return {
+      type: "error",
+      message: SESSION_IN_USE_HINT(name),
+    };
+  }
+
+  const existing = sessions.get(name);
+  if (!existing) return null;
+
+  if (existing.status === "running") {
+    return {
+      type: "error",
+      message: SESSION_IN_USE_HINT(name),
+    };
+  }
+
+  sessions.delete(name);
+  return null;
+}
+
 function screenResponse(
   session: Session,
-  sessionId: string,
+  sessionName: string,
   responseType: ScreenResponse["type"],
   snap: ReturnType<Session["snapshot"]>
 ): ScreenResponse {
   return {
     type: responseType,
-    session_id: sessionId,
+    session_name: sessionName,
     lines: snap.lines,
     changed: snap.changed,
     status: session.status,
@@ -95,7 +116,6 @@ function screenResponse(
     is_fullscreen: snap.is_fullscreen,
     cols: session.cols,
     rows: session.rows,
-    highlights: snap.highlights,
   };
 }
 
@@ -112,53 +132,40 @@ async function handleRequest(req: Request): Promise<Response> {
       const r = req as StartRequest;
       const nameErr = validateSessionName(r.session_name);
       if (nameErr) return { type: "error", message: nameErr };
-      if (sessions.has(r.session_name)) {
-        return {
-          type: "error",
-          message: `Session "${r.session_name}" already exists. Use 'ttc use ${r.session_name}' or 'ttc kill' first.`,
-        };
-      }
-      const session = new Session(r.session_name, r.command, {
-        cwd: r.cwd,
-        label: r.session_name,
-        cols: r.cols,
-        rows: r.rows,
-      });
-      sessions.set(r.session_name, session);
-      setCurrentSession(r.session_name);
-      resetIdleTimer();
-      return { type: "start", session_id: r.session_name };
-    }
 
-    case "use": {
-      const r = req as UseRequest;
-      const nameErr = validateSessionName(r.session_id);
-      if (nameErr) return { type: "error", message: nameErr };
-      if (!sessions.has(r.session_id)) {
-        return { type: "error", message: `Session not found: ${r.session_id}` };
+      const unavailable = checkSessionNameAvailable(r.session_name);
+      if (unavailable) return unavailable;
+
+      startingSessions.add(r.session_name);
+      try {
+        const session = new Session(r.session_name);
+        sessions.set(r.session_name, session);
+        resetIdleTimer();
+        const snap = await doneSnapshot(session);
+        return screenResponse(session, r.session_name, "start", snap);
+      } finally {
+        startingSessions.delete(r.session_name);
       }
-      setCurrentSession(r.session_id);
-      return { type: "use", session_id: r.session_id, ok: true };
     }
 
     case "screen": {
       const r = req as ScreenRequest;
-      const sessionOrError = getCurrentSession();
+      const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
       const snap = r.done ? await doneSnapshot(session) : session.snapshot();
-      return screenResponse(session, currentSession!, "screen", snap);
+      return screenResponse(session, r.session_name, "screen", snap);
     }
 
     case "type": {
       const r = req as TypeRequest;
-      const sessionOrError = getCurrentSession();
+      const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
       try {
         session.send(r.input);
         const snap = await doneSnapshot(session);
-        return screenResponse(session, currentSession!, "type", snap);
+        return screenResponse(session, r.session_name, "type", snap);
       } catch (e: unknown) {
         return {
           type: "error",
@@ -169,13 +176,13 @@ async function handleRequest(req: Request): Promise<Response> {
 
     case "press": {
       const r = req as PressRequest;
-      const sessionOrError = getCurrentSession();
+      const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
       try {
         session.press(r.sequence);
         const snap = await doneSnapshot(session);
-        return screenResponse(session, currentSession!, "press", snap);
+        return screenResponse(session, r.session_name, "press", snap);
       } catch (e: unknown) {
         return {
           type: "error",
@@ -185,66 +192,28 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     case "kill": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
+      const r = req as KillRequest;
+      const sessionOrError = getSession(r.session_name);
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      const session = sessionOrError as Session;
       session.kill();
-      sessions.delete(currentSession);
-      setCurrentSession(null);
+      sessions.delete(r.session_name);
       resetIdleTimer();
       return { type: "kill", ok: true };
     }
 
     case "list": {
       const list = [...sessions.values()].map((s) => s.toInfo());
-      return { type: "list", sessions: list, current: currentSession ?? undefined };
+      return { type: "list", sessions: list };
     }
 
     case "scroll": {
-      const sessionOrError = getCurrentSession();
+      const r = req as ScrollRequest;
+      const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
-      const r = req as ScrollRequest;
       session.scroll(r.direction);
-      return screenResponse(session, currentSession!, "scroll", session.snapshot());
-    }
-
-    case "info": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
-      return {
-        type: "info",
-        session_id: session.id,
-        label: session.label,
-        command: session.command,
-        status: session.status,
-        exit_code: session.exitCode,
-        start_time: session.startTime,
-        cols: session.cols,
-        rows: session.rows,
-      };
-    }
-
-    case "rename": {
-      if (!currentSession) {
-        return { type: "error", message: "No current session. Run 'ttc use <session-name>' first." };
-      }
-      const session = sessions.get(currentSession);
-      if (!session) {
-        return { type: "error", message: `Session not found: ${currentSession}` };
-      }
-      const r = req as import("./protocol").RenameRequest;
-      session.rename(r.label);
-      return { type: "rename", ok: true, label: r.label };
+      return screenResponse(session, r.session_name, "scroll", session.snapshot());
     }
 
     default: {
@@ -322,7 +291,7 @@ function startServer() {
 
     // Windows-specific error guidance
     if (process.platform === "win32" && err.code === "EADDRINUSE") {
-      message += `\n  Port ${DAEMON_PORT} is already in use. Try:\n    ttc daemon stop`;
+      message += `\n  Port ${DAEMON_PORT} is already in use.`;
     } else if (process.platform === "win32" && err.code === "EACCES") {
       message += `\n  Permission denied on port ${DAEMON_PORT}. Try running with elevated privileges.`;
     }

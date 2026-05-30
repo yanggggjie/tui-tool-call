@@ -8,90 +8,93 @@ description: Operate interactive terminal programs (REPLs, debuggers, TUI apps) 
 ## Workflow
 
 ```
-start → done → type/press → done → kill
+start <session> → type/press <session> … → kill <session>
 ```
+
+Every command takes an explicit **session name** (letters/digits only). There is no implicit current session.
 
 ## Waiting (required)
 
 **Never** use timing tools to wait for ttc output — no `sleep`, fixed delays, `timeout`, polling with arbitrary intervals, or any other clock-based wait.
 
-`ttc done` is the correct wait: it debounces PTY changes until the screen is stable. That covers agent tasks finishing, spinners, progress bars, pagers, prompts, and other dynamic TUI output — you do not need extra waits on top.
+`ttc done <session>` is the correct wait: it debounces PTY changes until the screen is stable.
 
 | Situation | Use |
 |-----------|-----|
-| After `start` | `ttc done` |
+| After `start` | screen is printed after internal done (no extra wait) |
 | After `type` / `press` | screen is printed after internal done (no extra wait) |
-| Peek without waiting | `ttc now` |
-| Live refresh (human) | `ttc watch` — not a substitute for `done` |
+| Peek without waiting | `ttc now <session>` |
+| Explicit wait | `ttc done <session>` |
+| Live refresh (human) | `ttc watch <session>` — not a substitute for `done` |
 
 ## Session naming (required)
 
-`ttc start` **must** include a session name as the first argument. Names are **lowercase letters and hyphens only** (`^[a-z]+(-[a-z]+)*$`), e.g. `dev`, `temp-work`, `claude-agent`, `myapp-dev`. Invalid or missing names error; names are never auto-generated.
+Names are **letters and digits only** (`^[a-zA-Z0-9]+$`). Prefer short letter-only names:
 
-### Three session types
+| Purpose | Example names |
+|---------|----------------|
+| Short-lived reuse | `tempwork`, `work` |
+| Agent CLI | `agent`, `claude` |
+| Dev server | `dev`, `webdev` |
 
-| Type | Name pattern | When to use | Lifecycle |
-|------|----------------|-------------|-----------|
-| **Short-lived tools** | `temp-work` | lazygit, one-off TUIs, quick edits | **Reuse** — `ttc use temp-work`; do **not** kill after each task |
-| **Long-running agents** | `claude-agent`, `cursor-agent`, … | Driving another agent CLI | Dedicated session; keep alive across the task |
-| **Dev servers** | `api-dev`, `web-dev`, … | Background servers (`npm run dev`, etc.) | Dedicated session; leave running |
+If a name is already in use, pick a different session name, or run `ttc kill <name>` before `ttc start <name>` again.
 
-If `temp-work` (or any name) already exists, use `ttc use <name>` instead of `ttc start` again.
-
-## Observe (stdout = plain screen text, no options)
+## Observe
 
 | Command | Alias | Action |
 |---------|-------|--------|
-| `ttc now` | — | Current screen |
-| `ttc done` | — | Wait until stable, then screen |
-| `ttc watch` | — | Refresh `now` every 1s in-place (Ctrl+C to stop) |
-| `ttc up` | `u` | Scroll up one screen |
-| `ttc down` | `d` | Scroll down one screen |
-| `ttc top` | `t` | Scroll to top |
-| `ttc bottom` | `b` | Scroll to bottom |
+| `ttc now <session>` | — | Current screen |
+| `ttc done <session>` | — | Wait until stable, then screen |
+| `ttc watch <session>` | — | Refresh every 1s in-place (Ctrl+C) |
+| `ttc up <session>` | `u` | Scroll up one screen |
+| `ttc down <session>` | `d` | Scroll down one screen |
+| `ttc top <session>` | `t` | Scroll to top |
+| `ttc bottom <session>` | `b` | Scroll to bottom |
 
 ## Session
 
+`ttc start <session>` opens interactive **bash** in the **current working directory** (120×30). Use `ttc type` / `ttc press` to cd or launch programs.
+
 ```
-ttc start <session-name> <cmd> [--cwd] [--cols] [--rows]
-ttc use <session-name>
-ttc kill
+ttc start <session>
+ttc kill <session>
 ttc list
-ttc info
-ttc rename <label>
 ```
 
-## Input (then auto-done, prints screen)
+## Input (auto-done, prints screen)
 
 ```
-ttc type <text>     # \n Enter, \t Tab
-ttc press <key>     # enter, ctrl+c, arrow_up, …
+ttc type <session> <text>     # \n Enter, \t Tab
+ttc press <session> <key>     # enter, ctrl+c, arrow_up, …
+ttc keys                      # list supported key names
 ```
 
 ## Examples
 
 ```bash
-# Short tool — reuse temp-work
-ttc start temp-work lazygit
-ttc done
-# … later …
-ttc use temp-work
-ttc done
+# TUI tool — reuse tempwork
+ttc start tempwork
+ttc type tempwork "lazygit"
+ttc press tempwork enter
 
-# Long-running agent
-ttc start claude-agent claude
-ttc done
+# Agent CLI
+ttc start agent
+ttc type agent "claude"
+ttc press agent enter
 
 # Dev server
-ttc start web-dev npm run dev
-ttc done
+ttc start dev
+ttc type dev "npm run dev"
+ttc press dev enter
 ```
 
 ```bash
 # REPL smoke test
-ttc start temp-work python3
-ttc done
-ttc type "1+1\n"
-ttc done
-# leave temp-work running for reuse; only kill when intentionally tearing down
+ttc start tempwork
+ttc type tempwork "python3"
+ttc press tempwork enter
+ttc type tempwork "1+1"
+ttc press tempwork enter
+# leave tempwork running; kill only when tearing down
+ttc kill tempwork
 ```

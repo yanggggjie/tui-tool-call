@@ -1,9 +1,5 @@
 """
 Box-draw dialog — panel with border + inverse-highlighted buttons inside.
-Tests that highlights are detected correctly inside box-drawing chrome.
-
-Expected highlights output:
-  highlights: [{ line: N, col_start: X, col_end: Y, text: "Yes" or "No" }]
 """
 import sys
 import tty

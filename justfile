@@ -45,15 +45,11 @@ which-ttc:
     @which ttc
     @ttc --version
 
-# Check daemon status
-daemon-status:
-    ttc daemon status
-
 # Quick smoke test: drive examples/ask.py
 demo-ask:
-    ttc start temp-work python3 examples/ask.py
-    ttc done
-    ttc type "Alice"
-    ttc press enter
-    ttc done
-    ttc kill
+    ttc start tempwork
+    ttc type tempwork "python3 examples/ask.py"
+    ttc press tempwork enter
+    ttc type tempwork "Alice"
+    ttc press tempwork enter
+    ttc kill tempwork

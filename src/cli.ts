@@ -3,7 +3,7 @@
  * ttc CLI
  */
 import { Command } from "commander";
-import { sendRequest, checkDaemonStatus, stopDaemon, restartDaemon } from "./client";
+import { sendRequest } from "./client";
 import { validateSessionName } from "./session";
 import { Response, ErrorResponse, ScreenResponse } from "./protocol";
 import { version } from "../package.json";
@@ -15,57 +15,33 @@ program
   .description("TUI automation for AI agents — like BrowserUse, but for the terminal")
   .version(version);
 
+function exitOnBadSessionName(name: string): void {
+  const err = validateSessionName(name);
+  if (err) {
+    process.stderr.write(`Error: ${err}\n`);
+    process.exit(1);
+  }
+}
+
 // ---- session ----
 program
-  .command("start <session-name> [args...]")
-  .description("Start a named PTY session (name: lowercase letters and hyphens, e.g. temp-work)")
-  .option("--cwd <dir>", "Working directory for the command")
-  .option("--cols <n>", "Terminal width (default: 120)", "120")
-  .option("--rows <n>", "Terminal height (default: 30)", "30")
-  .action(async (sessionName: string, args: string[], opts) => {
-    const nameErr = validateSessionName(sessionName);
-    if (nameErr) {
-      process.stderr.write(`Error: ${nameErr}\n`);
-      process.exit(1);
-    }
-    const command = args.join(" ");
-    if (!command.trim()) {
-      process.stderr.write("Error: no command specified\n");
-      process.exit(1);
-    }
+  .command("start <session-name>")
+  .description("Start bash in the current directory, then print screen when stable")
+  .action(async (sessionName: string) => {
+    exitOnBadSessionName(sessionName);
     const res = await sendRequest({
       type: "start",
       session_name: sessionName,
-      command,
-      cwd: opts.cwd,
-      cols: parseInt(opts.cols, 10),
-      rows: parseInt(opts.rows, 10),
     });
-    handleResponse(res, (r) => {
-      if (r.type === "start") console.log(r.session_id);
-    });
+    handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
 program
-  .command("use <session-name>")
-  .description("Set the current session for subsequent commands")
+  .command("kill <session-name>")
+  .description("Terminate a session")
   .action(async (sessionName: string) => {
-    const nameErr = validateSessionName(sessionName);
-    if (nameErr) {
-      process.stderr.write(`Error: ${nameErr}\n`);
-      process.exit(1);
-    }
-    const res = await sendRequest({ type: "use", session_id: sessionName });
-    handleResponse(res, (r) => {
-      if (r.type === "use") console.log(JSON.stringify({ ok: r.ok, session_id: r.session_id }));
-    });
-  });
-
-program
-  .command("kill")
-  .description("Terminate the current session")
-  .action(async () => {
-    const res = await sendRequest({ type: "kill" });
+    exitOnBadSessionName(sessionName);
+    const res = await sendRequest({ type: "kill", session_name: sessionName });
     handleResponse(res, (r) => {
       if (r.type === "kill") console.log(JSON.stringify({ ok: r.ok }));
     });
@@ -82,93 +58,66 @@ program
         console.log("No active sessions");
         return;
       }
-      const idWidth = Math.max(10, ...r.sessions.map((s) => s.session_id.length));
-      const labelWidth = Math.max(5, ...r.sessions.map((s) => s.label.length));
+      const nameWidth = Math.max(12, ...r.sessions.map((s) => s.session_name.length));
       const cmdWidth = Math.max(7, ...r.sessions.map((s) => s.command.length));
-      const header = `${"SESSION ID".padEnd(idWidth)}  ${"LABEL".padEnd(labelWidth)}  ${"COMMAND".padEnd(cmdWidth)}  STATUS`;
+      const header = `${"SESSION".padEnd(nameWidth)}  ${"COMMAND".padEnd(cmdWidth)}  STATUS`;
       console.log(header);
       console.log("-".repeat(header.length));
       for (const s of r.sessions) {
-        const mark = s.session_id === r.current ? " [current]" : "";
         console.log(
-          `${s.session_id.padEnd(idWidth)}  ${s.label.padEnd(labelWidth)}  ${s.command.padEnd(cmdWidth)}  ${s.status}${mark}`
+          `${s.session_name.padEnd(nameWidth)}  ${s.command.padEnd(cmdWidth)}  ${s.status}`
         );
       }
     });
   });
 
-program
-  .command("info")
-  .description("Show detailed information about the current session")
-  .action(async () => {
-    const res = await sendRequest({ type: "info" });
-    handleResponse(res, (r) => {
-      if (r.type === "info") {
-        console.log(`Session ID: ${r.session_id}`);
-        console.log(`Label: ${r.label}`);
-        console.log(`Command: ${r.command}`);
-        console.log(`Status: ${r.status}`);
-        if (r.exit_code !== null) console.log(`Exit Code: ${r.exit_code}`);
-        console.log(`Size: ${r.cols}x${r.rows}`);
-        console.log(`Started: ${new Date(r.start_time).toISOString()}`);
-      }
-    });
-  });
-
-program
-  .command("rename <label>")
-  .description("Rename the current session with a new label")
-  .action(async (label: string) => {
-    const res = await sendRequest({ type: "rename", label });
-    handleResponse(res, (r) => {
-      if (r.type === "rename") console.log(JSON.stringify({ ok: r.ok, label: r.label }));
-    });
-  });
-
 // ---- observe (plain text screen only) ----
 program
-  .command("now")
+  .command("now <session-name>")
   .description("Print the current screen")
-  .action(async () => {
-    const res = await sendRequest({ type: "screen", done: false });
+  .action(async (sessionName: string) => {
+    exitOnBadSessionName(sessionName);
+    const res = await sendRequest({ type: "screen", session_name: sessionName, done: false });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
 program
-  .command("done")
+  .command("done <session-name>")
   .description("Wait until the screen is stable, then print it")
-  .action(async () => {
-    const res = await sendRequest({ type: "screen", done: true });
+  .action(async (sessionName: string) => {
+    exitOnBadSessionName(sessionName);
+    const res = await sendRequest({ type: "screen", session_name: sessionName, done: true });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
 program
-  .command("watch")
+  .command("watch <session-name>")
   .description("Refresh screen every second in-place (Ctrl+C to stop)")
-  .action(async () => {
-    await runWatch();
+  .action(async (sessionName: string) => {
+    exitOnBadSessionName(sessionName);
+    await runWatch(sessionName);
   });
 
 program
-  .command("up")
+  .command("up <session-name>")
   .alias("u")
   .description("Scroll up one screen, then print screen")
   .action(scrollCmd("up"));
 
 program
-  .command("down")
+  .command("down <session-name>")
   .alias("d")
   .description("Scroll down one screen, then print screen")
   .action(scrollCmd("down"));
 
 program
-  .command("top")
+  .command("top <session-name>")
   .alias("t")
   .description("Scroll to top of buffer, then print screen")
   .action(scrollCmd("top"));
 
 program
-  .command("bottom")
+  .command("bottom <session-name>")
   .alias("b")
   .description("Scroll to bottom of buffer, then print screen")
   .action(scrollCmd("bottom"));
@@ -197,23 +146,29 @@ const SUPPORTED_KEYS = Object.keys(KEY_MAP);
 
 // ---- input ----
 program
-  .command("type <input...>")
-  .description("Type text to the current session (\\n = Enter, \\t = Tab), then print screen when stable")
-  .action(async (inputParts: string[]) => {
-    const res = await sendRequest({ type: "type", input: inputParts.join(" ") });
+  .command("type <session-name> <input...>")
+  .description("Type text (\\n = Enter, \\t = Tab), then print screen when stable")
+  .action(async (sessionName: string, inputParts: string[]) => {
+    exitOnBadSessionName(sessionName);
+    const res = await sendRequest({
+      type: "type",
+      session_name: sessionName,
+      input: inputParts.join(" "),
+    });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
 program
-  .command("press <key>")
+  .command("press <session-name> <key>")
   .description("Press a key (enter, escape, ctrl+c, arrow_up, …), then print screen when stable")
-  .action(async (key: string) => {
+  .action(async (sessionName: string, key: string) => {
+    exitOnBadSessionName(sessionName);
     const sequence = KEY_MAP[key.toLowerCase()];
     if (sequence === undefined) {
       process.stderr.write(`Error: unknown key "${key}". Run \`ttc keys\` to see supported names.\n`);
       process.exit(1);
     }
-    const res = await sendRequest({ type: "press", sequence });
+    const res = await sendRequest({ type: "press", session_name: sessionName, sequence });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
@@ -224,28 +179,10 @@ program
     console.log(SUPPORTED_KEYS.join(", "));
   });
 
-// ---- daemon ----
-const daemonCmd = program.command("daemon").description("Manage the ttc daemon");
-
-daemonCmd.command("status").action(() => {
-  const status = checkDaemonStatus();
-  console.log(JSON.stringify(status.running ? { status: "running", pid: status.pid } : { status: "stopped" }, null, 2));
-});
-
-daemonCmd.command("stop").action(() => {
-  const stopped = stopDaemon();
-  console.log(JSON.stringify({ ok: stopped }, null, 2));
-});
-
-daemonCmd.command("restart").action(async () => {
-  await restartDaemon();
-  const status = checkDaemonStatus();
-  console.log(JSON.stringify({ ok: true, pid: status.pid }, null, 2));
-});
-
 function scrollCmd(direction: "up" | "down" | "top" | "bottom") {
-  return async () => {
-    const res = await sendRequest({ type: "scroll", direction });
+  return async (sessionName: string) => {
+    exitOnBadSessionName(sessionName);
+    const res = await sendRequest({ type: "scroll", session_name: sessionName, direction });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   };
 }
@@ -266,7 +203,7 @@ function writeScreenInPlace(lines: string[]): void {
   process.stdout.write(lines.join("\n") + "\n");
 }
 
-async function runWatch(): Promise<void> {
+async function runWatch(sessionName: string): Promise<void> {
   process.stderr.write("Watching (1s)… Ctrl+C to stop\n");
   process.stdout.write(HIDE_CURSOR);
 
@@ -281,7 +218,7 @@ async function runWatch(): Promise<void> {
   process.on("SIGTERM", stop);
 
   while (!stopping) {
-    const res = await sendRequest({ type: "screen", done: false });
+    const res = await sendRequest({ type: "screen", session_name: sessionName, done: false });
     if (res.type === "error") {
       process.stdout.write(SHOW_CURSOR);
       process.stderr.write(`Error: ${(res as ErrorResponse).message}\n`);

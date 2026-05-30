@@ -38,7 +38,6 @@ ttc observes every PTY render event directly. `done` blocks until the screen sta
 - **🖥️ Full VT Rendering** — PTY output is processed by a headless xterm emulator. ANSI escape sequences and screen clearing all work correctly. Output is always clean plain text.
 - **⏱️ Smart Wait** — `done` blocks until the screen has been stable (100ms debounce, 3s timeout).
 - **📸 Screen Model** — `now` to read, `type`/`press` to act, `done` to confirm, repeat.
-- **🔍 TUI selection** — Read which menu option, tab, or button is active directly from the rendered text on screen.
 
 ## Installation
 
@@ -123,39 +122,33 @@ program outputs → PTY → xterm emulator → render event
                                         → 100ms of silence → screen prints ✓
 ```
 
-Behind the scenes, a daemon process manages PTY sessions so they persist across CLI calls.
+Behind the scenes, sessions persist across CLI calls until killed or idle-timeout.
 
 ## CLI Interface
 
 ### Core Commands
 
+Every command that touches a session requires `<session>` (letters/digits only, e.g. `dev`, `tempwork`, `agent`).
+
 ```
-ttc start <session-name> <cmd>             # Start a named session (required; never auto-generated)
-ttc start --cwd <dir> <session-name> <cmd> # Start in specific directory
-ttc start temp-work "<cmd> -flags"         # Short tools: reuse temp-work via ttc use
-ttc start --cols <n> --rows <n> <name> <cmd>  # Custom terminal size (default: 120x30)
-ttc use <session-name>                     # Switch to a session
-ttc now                                    # Print current screen
-ttc done                                   # Wait until stable, print screen
-ttc watch                                  # Refresh now every 1s in-place (Ctrl+C)
-ttc u                                      # Scroll up one screen
-ttc d                                      # Scroll down one screen
-ttc t                                      # Scroll to top
-ttc b                                      # Scroll to bottom
-ttc type <text>                            # Type text, then print screen when stable
-ttc press <key>                            # Press key, then print screen when stable
-ttc list                                   # List all sessions
-ttc info                                   # Show session details
-ttc rename <label>                         # Rename session
-ttc kill                                   # Kill current session
-ttc daemon status                          # Check if daemon is running
-ttc daemon stop                            # Stop the daemon
-ttc daemon restart                         # Restart the daemon
+ttc start <session>              # Start bash, wait until stable, print screen
+ttc now <session>                # Print current screen
+ttc done <session>               # Wait until stable, print screen
+ttc watch <session>              # Refresh now every 1s in-place (Ctrl+C)
+ttc u <session>                  # Scroll up one screen
+ttc d <session>                  # Scroll down one screen
+ttc t <session>                  # Scroll to top
+ttc b <session>                  # Scroll to bottom
+ttc type <session> <text>        # Type text, then print screen when stable
+ttc press <session> <key>        # Press key, then print screen when stable
+ttc keys                         # List keys supported by press
+ttc list                         # List all sessions
+ttc kill <session>               # Kill a session
 ```
 
 ## Limitations
 
-- **TUI color/style info is mostly lost** — output is plain text only; colors and most formatting are stripped. Read selection/state directly from the rendered text on screen.
+- **TUI color/style info is mostly lost** — output is plain text only; colors and most formatting are stripped.
 
 ## Troubleshooting
 
@@ -177,12 +170,12 @@ npm run build
 npm link
 
 # Try it
-ttc start temp-work python3 examples/ask.py
-ttc done
-ttc type "Alice"
-ttc press enter
-ttc done
-ttc kill
+ttc start tempwork
+ttc type tempwork "python3 examples/ask.py"
+ttc press tempwork enter
+ttc type tempwork "Alice"
+ttc press tempwork enter
+ttc kill tempwork
 ```
 
 ## License

@@ -1,9 +1,6 @@
 """
 Tab bar example — inline inverse highlight.
 A single line with multiple tabs, only the selected one is inverse.
-
-Expected highlights output:
-  highlights: [{ line: 2, col_start: X, col_end: Y, text: "<selected tab>" }]
 """
 import sys
 import tty

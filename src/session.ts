@@ -9,19 +9,18 @@
 import * as pty from "@homebridge/node-pty-prebuilt-multiarch";
 import { Terminal } from "@xterm/headless";
 import { SessionInfo } from "./protocol";
-import { extractHighlights, Highlight } from "./highlights";
 
-/** lowercase word or hyphenated words: dev, temp-work, claude-agent */
-export const SESSION_NAME_PATTERN = /^[a-z]+(-[a-z]+)*$/;
+/** Letters and digits only: dev, tempwork, agent1 */
+export const SESSION_NAME_PATTERN = /^[a-zA-Z0-9]+$/;
 
 export function validateSessionName(name: string): string | null {
   if (!name?.trim()) {
-    return "session name is required (e.g. temp-work, claude-agent, myapp-dev)";
+    return "session name is required (e.g. dev, tempwork, agent)";
   }
   if (!SESSION_NAME_PATTERN.test(name)) {
     return (
-      `invalid session name "${name}": use lowercase letters and hyphens only ` +
-      "(e.g. temp-work, claude-agent, myapp-dev)"
+      `invalid session name "${name}": use letters and digits only ` +
+      "(e.g. dev, tempwork, agent)"
     );
   }
   return null;
@@ -173,9 +172,11 @@ export function hasChanged(
   );
 }
 
+/** Default interactive shell spawned by `ttc start`. */
+export const DEFAULT_SHELL = "bash";
+
 export class Session {
-  readonly id: string;
-  label: string;
+  readonly name: string;
   readonly command: string;
   readonly startTime: number;
 
@@ -191,13 +192,11 @@ export class Session {
   private changeListeners: Array<() => void> = [];
 
   constructor(
-    id: string,
-    command: string,
-    options: { cwd?: string; label?: string; cols?: number; rows?: number }
+    name: string,
+    options: { cwd?: string; cols?: number; rows?: number } = {}
   ) {
-    this.id = id;
-    this.command = command;
-    this.label = options.label ?? command.slice(0, 40);
+    this.name = name;
+    this.command = DEFAULT_SHELL;
     this.startTime = Date.now();
 
     const cols = options.cols ?? 120;
@@ -218,8 +217,7 @@ export class Session {
       this.notifyListeners();
     });
 
-    const shell = process.env.SHELL ?? "/bin/sh";
-    this.ptyProcess = pty.spawn(shell, ["-c", command], {
+    this.ptyProcess = pty.spawn(DEFAULT_SHELL, [], {
       name: "xterm-256color",
       cols,
       rows,
@@ -258,7 +256,7 @@ export class Session {
   /** Send literal text to the PTY. Supports \n \r \t escape sequences. */
   send(input: string): void {
     if (this._status === "exited") {
-      throw new Error(`Session ${this.id} has already exited`);
+      throw new Error(`Session ${this.name} has already exited`);
     }
     const interpreted = input
       .replace(/\\n/g, "\n")
@@ -270,7 +268,7 @@ export class Session {
   /** Write a key escape sequence to the PTY. */
   press(sequence: string): void {
     if (this._status === "exited") {
-      throw new Error(`Session ${this.id} has already exited`);
+      throw new Error(`Session ${this.name} has already exited`);
     }
     this.ptyProcess.write(sequence);
   }
@@ -280,7 +278,7 @@ export class Session {
    * Trailing empty lines and per-line trailing spaces are removed.
    * Updates lastSnapshot for change detection.
    */
-  snapshot(options?: { color?: boolean }): { lines: string[]; changed: boolean; highlights: Highlight[]; title: string; is_fullscreen: boolean } {
+  snapshot(options?: { color?: boolean }): { lines: string[]; changed: boolean; title: string; is_fullscreen: boolean } {
     const buf = this.terminal.buffer.active;
     const useColor = options?.color ?? false;
     const plainLines: string[] = [];
@@ -319,11 +317,9 @@ export class Session {
     } else {
       lines = plainLines;
     }
-    const highlights = extractHighlights(buf, this.terminal.rows, startY);
     return {
       lines,
       changed,
-      highlights,
       title: this._title,
       is_fullscreen: this._isFullscreen,
     };
@@ -338,7 +334,7 @@ export class Session {
     text?: string,
     debounceMs: number = 100,
     options?: { color?: boolean }
-  ): Promise<{ lines: string[]; changed: boolean; highlights: ReturnType<typeof extractHighlights>; title: string; is_fullscreen: boolean }> {
+  ): Promise<{ lines: string[]; changed: boolean; title: string; is_fullscreen: boolean }> {
     const beforeScreen = this.lastSnapshot;
     const beforeTitle = this._title;
     const beforeFullscreen = this._isFullscreen;
@@ -407,8 +403,7 @@ export class Session {
 
   toInfo(): SessionInfo {
     return {
-      session_id: this.id,
-      label: this.label,
+      session_name: this.name,
       command: this.command,
       status: this._status,
       exit_code: this._exitCode,
@@ -449,11 +444,6 @@ export class Session {
       case "top": this.scrollTop(); break;
       case "bottom": this.scrollBottom(); break;
     }
-  }
-
-  /** Rename the session */
-  rename(newLabel: string): void {
-    this.label = newLabel;
   }
 
   private notifyListeners(): void {

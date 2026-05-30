@@ -1,10 +1,6 @@
 """
 Multi-column picker — multiple inverse fragments on the same line,
 only one selected at a time.
-
-Expected highlights output:
-  highlights: [{ line: N, col_start: X, col_end: Y, text: "<selected item>" }]
-  (one fragment per row, exactly one is selected across all rows)
 """
 import sys
 import tty
