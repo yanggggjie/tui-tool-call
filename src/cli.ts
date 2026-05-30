@@ -6,6 +6,7 @@ import { Command } from "commander";
 import { sendRequest } from "./client";
 import { validateSessionName } from "./session";
 import { Response, ErrorResponse, ScreenResponse } from "./protocol";
+import { runWatchServer } from "./watch-server";
 import { version } from "../package.json";
 
 const program = new Command();
@@ -91,11 +92,10 @@ program
   });
 
 program
-  .command("watch <session-name>")
-  .description("Refresh screen every second in-place (Ctrl+C to stop)")
-  .action(async (sessionName: string) => {
-    exitOnBadSessionName(sessionName);
-    await runWatch(sessionName);
+  .command("watch")
+  .description("Human-only: start local web UI to observe all sessions (read-only)")
+  .action(async () => {
+    await runWatchServer();
   });
 
 program
@@ -187,50 +187,9 @@ function scrollCmd(direction: "up" | "down" | "top" | "bottom") {
   };
 }
 
-const WATCH_INTERVAL_MS = 1000;
-const CLEAR_HOME = "\x1b[2J\x1b[H";
-const HIDE_CURSOR = "\x1b[?25l";
-const SHOW_CURSOR = "\x1b[?25h";
-
 function printScreen(r: ScreenResponse): void {
   if (r.lines.length === 0) return;
   process.stdout.write(r.lines.join("\n") + "\n");
-}
-
-function writeScreenInPlace(lines: string[]): void {
-  process.stdout.write(CLEAR_HOME);
-  if (lines.length === 0) return;
-  process.stdout.write(lines.join("\n") + "\n");
-}
-
-async function runWatch(sessionName: string): Promise<void> {
-  process.stderr.write("Watching (1s)… Ctrl+C to stop\n");
-  process.stdout.write(HIDE_CURSOR);
-
-  let stopping = false;
-  const stop = () => {
-    if (stopping) return;
-    stopping = true;
-    process.stdout.write(SHOW_CURSOR);
-    process.exit(0);
-  };
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
-
-  while (!stopping) {
-    const res = await sendRequest({ type: "screen", session_name: sessionName, done: false });
-    if (res.type === "error") {
-      process.stdout.write(SHOW_CURSOR);
-      process.stderr.write(`Error: ${(res as ErrorResponse).message}\n`);
-      process.exit(1);
-    }
-    writeScreenInPlace((res as ScreenResponse).lines);
-    await sleep(WATCH_INTERVAL_MS);
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function handleResponse(res: Response, onSuccess: (r: Response) => void): void {

@@ -25,12 +25,17 @@ function info(msg: string): void {
   process.stderr.write(`ttc: ${msg}\n`);
 }
 
-/** Send one request to daemon, return response. Auto-starts daemon if needed. */
-export async function sendRequest(req: Request): Promise<Response> {
+/** Ensure daemon is running (used by watch server). */
+export async function ensureDaemonRunning(): Promise<void> {
   if (!isDaemonRunning()) {
     info("starting daemon...");
     await startDaemon();
   }
+}
+
+/** Send one request to daemon, return response. Auto-starts daemon if needed. */
+export async function sendRequest(req: Request): Promise<Response> {
+  await ensureDaemonRunning();
   return sendToDaemon(req);
 }
 

@@ -21,6 +21,8 @@ import {
   PressRequest,
   KillRequest,
   ScrollRequest,
+  StreamSubscribeRequest,
+  StreamUnsubscribeRequest,
   ScreenResponse,
 } from "./protocol";
 
@@ -122,6 +124,89 @@ function screenResponse(
 async function doneSnapshot(session: Session): Promise<ReturnType<Session["snapshot"]>> {
   await session.wait(WAIT_MS, undefined, DEBOUNCE_MS);
   return session.snapshot();
+}
+
+// ---- PTY stream subscriptions (for ttc watch) ----
+
+interface StreamSubscription {
+  unsubscribeData: () => void;
+  unsubscribeExit: () => void;
+}
+
+interface SocketStreamState {
+  subscriptions: Map<string, StreamSubscription>;
+}
+
+function writeSocketLine(socket: net.Socket, payload: object): void {
+  socket.write(JSON.stringify(payload) + "\n");
+}
+
+function unsubscribeSessionStream(state: SocketStreamState, sessionName: string): void {
+  const sub = state.subscriptions.get(sessionName);
+  if (!sub) return;
+  sub.unsubscribeData();
+  sub.unsubscribeExit();
+  state.subscriptions.delete(sessionName);
+}
+
+function cleanupSocketStreams(state: SocketStreamState): void {
+  for (const sessionName of [...state.subscriptions.keys()]) {
+    unsubscribeSessionStream(state, sessionName);
+  }
+}
+
+function handleStreamSubscribe(
+  socket: net.Socket,
+  state: SocketStreamState,
+  req: StreamSubscribeRequest
+): void {
+  unsubscribeSessionStream(state, req.session_name);
+
+  const sessionOrError = getSession(req.session_name);
+  if ("type" in sessionOrError && sessionOrError.type === "error") {
+    writeSocketLine(socket, sessionOrError);
+    return;
+  }
+
+  const session = sessionOrError as Session;
+  const sessionName = req.session_name;
+
+  const unsubscribeData = session.onStream((data) => {
+    writeSocketLine(socket, { type: "stream_data", session_name: sessionName, data });
+  });
+
+  const unsubscribeExit = session.onExit((exitCode) => {
+    writeSocketLine(socket, { type: "stream_end", session_name: sessionName, exit_code: exitCode });
+    unsubscribeSessionStream(state, sessionName);
+  });
+
+  state.subscriptions.set(sessionName, { unsubscribeData, unsubscribeExit });
+
+  writeSocketLine(socket, {
+    type: "stream_subscribed",
+    session_name: sessionName,
+    replay: session.getStreamReplay(),
+    cols: session.cols,
+    rows: session.rows,
+    status: session.status,
+    exit_code: session.exitCode,
+  });
+
+  if (session.status === "exited") {
+    writeSocketLine(socket, {
+      type: "stream_end",
+      session_name: sessionName,
+      exit_code: session.exitCode,
+    });
+    unsubscribeSessionStream(state, sessionName);
+  }
+}
+
+function handleStreamUnsubscribe(
+  state: SocketStreamState,
+  req: StreamUnsubscribeRequest
+): void {
+  unsubscribeSessionStream(state, req.session_name);
 }
 
 // ---- Request handlers ----
@@ -234,6 +319,7 @@ function startServer() {
 
   const server = net.createServer((socket) => {
     let buffer = "";
+    const streamState: SocketStreamState = { subscriptions: new Map() };
 
     socket.on("data", (data) => {
       buffer += data.toString();
@@ -246,15 +332,22 @@ function startServer() {
         try {
           req = JSON.parse(line) as Request;
         } catch {
-          socket.write(
-            JSON.stringify({ type: "error", message: "Invalid JSON" }) + "\n"
-          );
+          writeSocketLine(socket, { type: "error", message: "Invalid JSON" });
+          continue;
+        }
+
+        if (req.type === "stream_subscribe") {
+          handleStreamSubscribe(socket, streamState, req as StreamSubscribeRequest);
+          continue;
+        }
+        if (req.type === "stream_unsubscribe") {
+          handleStreamUnsubscribe(streamState, req as StreamUnsubscribeRequest);
           continue;
         }
 
         handleRequest(req).then((res) => {
           try {
-            socket.write(JSON.stringify(res) + "\n");
+            writeSocketLine(socket, res);
           } catch (writeErr) {
             const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
             process.stderr.write(`[daemon] failed to write response: ${msg}\n`);
@@ -263,13 +356,20 @@ function startServer() {
           const errMsg = err instanceof Error ? err.stack ?? err.message : String(err);
           process.stderr.write(`[daemon] handleRequest error: ${errMsg}\n`);
           try {
-            socket.write(JSON.stringify({ type: "error", message: String(err instanceof Error ? err.message : err) }) + "\n");
+            writeSocketLine(socket, {
+              type: "error",
+              message: String(err instanceof Error ? err.message : err),
+            });
           } catch (writeErr) {
             const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
             process.stderr.write(`[daemon] failed to write error response: ${msg}\n`);
           }
         });
       }
+    });
+
+    socket.on("close", () => {
+      cleanupSocketStreams(streamState);
     });
 
     socket.on("error", (err) => {

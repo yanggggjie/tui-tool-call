@@ -25,7 +25,9 @@ Every command takes an explicit **session name** (letters/digits only). There is
 | After `type` / `press` | screen is printed after internal done (no extra wait) |
 | Peek without waiting | `ttc now <session>` |
 | Explicit wait | `ttc done <session>` |
-| Live refresh (human) | `ttc watch <session>` — not a substitute for `done` |
+| Human observer (read-only web UI) | **`ttc watch`** — humans only, agents must **not** run this |
+
+**Agents must never run `ttc watch`.** It starts a local web server for human observation only. Use `ttc now` / `ttc done` instead.
 
 ## Session naming (required)
 
@@ -45,7 +47,7 @@ If a name is already in use, pick a different session name, or run `ttc kill <na
 |---------|-------|--------|
 | `ttc now <session>` | — | Current screen |
 | `ttc done <session>` | — | Wait until stable, then screen |
-| `ttc watch <session>` | — | Refresh every 1s in-place (Ctrl+C) |
+| `ttc watch` | — | **Human-only** — local web UI for all sessions (read-only) |
 | `ttc up <session>` | `u` | Scroll up one screen |
 | `ttc down <session>` | `d` | Scroll down one screen |
 | `ttc top <session>` | `t` | Scroll to top |

@@ -37,11 +37,10 @@ ttc observes every PTY render event directly. `done` blocks until the screen sta
 
 - **🖥️ Full VT Rendering** — PTY output is processed by a headless xterm emulator. ANSI escape sequences and screen clearing all work correctly. Output is always clean plain text.
 - **⏱️ Smart Wait** — `done` blocks until the screen has been stable (100ms debounce, 3s timeout).
+- **👀 Human observer** — `ttc watch` opens a local web dashboard (read-only, PTY stream + xterm.js). **Agents must not run this.**
 - **📸 Screen Model** — `now` to read, `type`/`press` to act, `done` to confirm, repeat.
 
 ## Installation
-
-**From npm (recommended):**
 
 ```bash
 npm install -g tui-tool-call
@@ -134,7 +133,7 @@ Every command that touches a session requires `<session>` (letters/digits only, 
 ttc start <session>              # Start bash, wait until stable, print screen
 ttc now <session>                # Print current screen
 ttc done <session>               # Wait until stable, print screen
-ttc watch <session>              # Refresh now every 1s in-place (Ctrl+C)
+ttc watch                        # Human-only: local web UI for all sessions (read-only)
 ttc u <session>                  # Scroll up one screen
 ttc d <session>                  # Scroll down one screen
 ttc t <session>                  # Scroll to top
@@ -146,9 +145,11 @@ ttc list                         # List all sessions
 ttc kill <session>               # Kill a session
 ```
 
+`ttc watch` prints a `http://127.0.0.1:…` URL and keeps running until Ctrl+C. It requires an interactive terminal (TTY) and is blocked for non-human callers.
+
 ## Limitations
 
-- **TUI color/style info is mostly lost** — output is plain text only; colors and most formatting are stripped.
+- **TUI color/style info is mostly lost in agent CLI output** — `now` / `done` return plain text; `ttc watch` preserves ANSI via xterm.js.
 
 ## Troubleshooting
 

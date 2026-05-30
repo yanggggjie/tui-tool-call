@@ -1,0 +1,91 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0f0f0f;
+  color: #e8e8e8;
+  min-height: 100vh;
+}
+
+header {
+  padding: 1rem 1.25rem 0.5rem;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0 0 0.75rem;
+  color: #888;
+  font-size: 0.875rem;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tab {
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ccc;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tab:hover {
+  border-color: #555;
+  color: #fff;
+}
+
+.tab.active {
+  border-color: #4a9eff;
+  color: #fff;
+  background: #152238;
+}
+
+.tab.exited {
+  opacity: 0.65;
+}
+
+.tab .status {
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.empty {
+  color: #888;
+  font-size: 0.875rem;
+}
+
+main {
+  padding: 1rem 1.25rem 2rem;
+}
+
+#terminal {
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 320px;
+}
+
+.status-line {
+  margin: 0.75rem 0 0;
+  font-size: 0.8125rem;
+  color: #888;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

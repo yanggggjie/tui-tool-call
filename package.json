@@ -7,6 +7,7 @@
   },
   "files": [
     "dist/",
+    "watch-ui/",
     "README.md",
     "LICENSE"
   ],
@@ -23,10 +24,12 @@
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "@xterm/headless": "^6.0.0",
-    "commander": "^12.0.0"
+    "commander": "^12.0.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.13",
     "typescript": "^5.0.0"
   },
   "engines": {

@@ -187,6 +187,9 @@ export class Session {
   private lastSnapshot: string = "";
   private _title: string = "";
   private _isFullscreen: boolean;
+  private outputLog: string = "";
+  private streamListeners: Array<(data: string) => void> = [];
+  private exitListeners: Array<(exitCode: number | null) => void> = [];
 
   // Listeners notified on any PTY data or exit
   private changeListeners: Array<() => void> = [];
@@ -227,12 +230,14 @@ export class Session {
 
     this.ptyProcess.onData((data: string) => {
       this.terminal.write(data);
+      this.appendOutput(data);
       this.notifyListeners();
     });
 
     this.ptyProcess.onExit(({ exitCode }) => {
       this._status = "exited";
       this._exitCode = exitCode ?? null;
+      this.notifyExitListeners(this._exitCode);
       this.notifyListeners();
     });
   }
@@ -251,6 +256,27 @@ export class Session {
 
   get rows(): number {
     return this.terminal.rows;
+  }
+
+  /** Raw PTY output retained for web watch replay (ring buffer). */
+  getStreamReplay(): string {
+    return this.outputLog;
+  }
+
+  /** Subscribe to live PTY output chunks. Returns unsubscribe. */
+  onStream(listener: (data: string) => void): () => void {
+    this.streamListeners.push(listener);
+    return () => {
+      this.streamListeners = this.streamListeners.filter((l) => l !== listener);
+    };
+  }
+
+  /** Subscribe to session exit (once). Returns unsubscribe. */
+  onExit(listener: (exitCode: number | null) => void): () => void {
+    this.exitListeners.push(listener);
+    return () => {
+      this.exitListeners = this.exitListeners.filter((l) => l !== listener);
+    };
   }
 
   /** Send literal text to the PTY. Supports \n \r \t escape sequences. */
@@ -450,5 +476,25 @@ export class Session {
     const listeners = [...this.changeListeners];
     this.changeListeners = [];
     for (const l of listeners) l();
+  }
+
+  private appendOutput(data: string): void {
+    const maxBytes = 512 * 1024;
+    this.outputLog += data;
+    if (this.outputLog.length > maxBytes) {
+      this.outputLog = this.outputLog.slice(-maxBytes);
+    }
+    const listeners = [...this.streamListeners];
+    for (const listener of listeners) {
+      listener(data);
+    }
+  }
+
+  private notifyExitListeners(exitCode: number | null): void {
+    const listeners = [...this.exitListeners];
+    this.exitListeners = [];
+    for (const listener of listeners) {
+      listener(exitCode);
+    }
   }
 }
