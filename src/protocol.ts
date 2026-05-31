@@ -2,15 +2,6 @@
  * ttc protocol — CLI RPC request/response types (POST /rpc JSON body).
  */
 
-export type Request =
-  | StartRequest
-  | ScreenRequest
-  | TypeRequest
-  | PressRequest
-  | KillRequest
-  | ListRequest
-  | ScrollRequest;
-
 export interface StartRequest {
   type: "start";
   session_name: string;
@@ -18,32 +9,51 @@ export interface StartRequest {
   cwd: string;
 }
 
-/** now: done=false, done: done=true */
-export interface ScreenRequest {
+export interface StartResponse {
   type: "screen";
-  session_name: string;
-  done: boolean;
+  screen: string;
 }
 
-export interface TypeRequest {
-  type: "type";
+export interface NowRequest {
+  type: "now";
   session_name: string;
-  input: string;
+}
+
+export interface NowResponse {
+  type: "screen";
+  screen: string;
+}
+
+export interface DoneRequest {
+  type: "done";
+  session_name: string;
+}
+
+export interface DoneResponse {
+  type: "screen";
+  screen: string;
+}
+
+export interface TextRequest {
+  type: "text";
+  session_name: string;
+  text: string;
+}
+
+export interface TextResponse {
+  type: "screen";
+  screen: string;
 }
 
 export interface PressRequest {
   type: "press";
   session_name: string;
-  sequence: string;
+  key: string;
 }
 
-export interface KillRequest {
-  type: "kill";
-  session_name: string;
-}
-
-export interface ListRequest {
-  type: "list";
+export interface PressResponse {
+  type: "screen";
+  screen: string;
 }
 
 export interface ScrollRequest {
@@ -52,23 +62,14 @@ export interface ScrollRequest {
   direction: "up" | "down" | "top" | "bottom";
 }
 
-export type Response =
-  | ScreenResponse
-  | KillResponse
-  | ListResponse
-  | ErrorResponse;
+export interface ScrollResponse {
+  type: "screen";
+  screen: string;
+}
 
-export interface ScreenResponse {
-  type: "screen" | "start" | "type" | "press" | "scroll";
+export interface KillRequest {
+  type: "kill";
   session_name: string;
-  lines: string[];
-  changed: boolean;
-  status: "running" | "exited";
-  exit_code: number | null;
-  title: string;
-  is_fullscreen: boolean;
-  cols: number;
-  rows: number;
 }
 
 export interface KillResponse {
@@ -76,20 +77,40 @@ export interface KillResponse {
   ok: boolean;
 }
 
-export interface ListResponse {
+export interface ListRequest {
   type: "list";
-  sessions: SessionInfo[];
 }
 
 export interface SessionInfo {
   session_name: string;
-  command: string;
-  status: "running" | "exited";
-  exit_code: number | null;
-  start_time: number;
+}
+
+export interface ListResponse {
+  type: "list";
+  sessions: SessionInfo[];
 }
 
 export interface ErrorResponse {
   type: "error";
   message: string;
 }
+
+export type Request =
+  | StartRequest
+  | NowRequest
+  | DoneRequest
+  | TextRequest
+  | PressRequest
+  | KillRequest
+  | ListRequest
+  | ScrollRequest;
+
+export type ScreenResponse =
+  | StartResponse
+  | NowResponse
+  | DoneResponse
+  | TextResponse
+  | PressResponse
+  | ScrollResponse;
+
+export type Response = ScreenResponse | KillResponse | ListResponse | ErrorResponse;

@@ -2,24 +2,65 @@ window.ttcWatch = (function () {
   let term = null;
   let ws = null;
   let activeSession = null;
+  const POLL_MS = 2000;
 
   function setStatus(text) {
     document.getElementById("status").textContent = text;
-  }
-
-  function updateTabsRequest(sessionName) {
-    const tabsEl = document.getElementById("tabs");
-    if (!tabsEl || !sessionName) return;
-    tabsEl.setAttribute(
-      "hx-get",
-      `/partials/tabs?active=${encodeURIComponent(sessionName)}`
-    );
   }
 
   function markActiveTab(sessionName) {
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.session === sessionName);
     });
+  }
+
+  function renderTabs(sessions) {
+    const container = document.getElementById("tabs");
+    if (!container) return;
+
+    if (sessions.length === 0) {
+      container.innerHTML =
+        '<p class="empty">No active sessions. Start one with <code>ttc start &lt;name&gt; &lt;command...&gt;</code>.</p>';
+      return;
+    }
+
+    const nav = document.createElement("nav");
+    nav.className = "tabs";
+
+    for (const s of sessions) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tab";
+      if (s.session_name === activeSession) btn.classList.add("active");
+      btn.dataset.session = s.session_name;
+      btn.textContent = s.session_name;
+      nav.appendChild(btn);
+    }
+
+    container.replaceChildren(nav);
+  }
+
+  async function refreshTabs() {
+    try {
+      const res = await fetch("/rpc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "list" }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.type !== "list") return;
+      renderTabs(data.sessions || []);
+
+      if (activeSession) {
+        markActiveTab(activeSession);
+        return;
+      }
+      const first = document.querySelector(".tab");
+      if (first) connect(first.dataset.session);
+    } catch {
+      /* ignore poll errors */
+    }
   }
 
   function initTerminal(cols, rows) {
@@ -48,7 +89,6 @@ window.ttcWatch = (function () {
     }
 
     activeSession = sessionName;
-    updateTabsRequest(sessionName);
     markActiveTab(sessionName);
     setStatus(`Connecting to ${sessionName}…`);
 
@@ -61,13 +101,13 @@ window.ttcWatch = (function () {
         case "init":
           initTerminal(msg.cols, msg.rows);
           if (msg.replay) term.write(msg.replay);
-          setStatus(`${msg.session_name} — ${msg.status}`);
+          setStatus(sessionName);
           break;
         case "data":
           if (term) term.write(msg.data);
           break;
         case "end":
-          setStatus(`${sessionName} exited (code ${msg.exit_code ?? "?"})`);
+          setStatus(`${sessionName} disconnected`);
           break;
         case "error":
           setStatus(`Error: ${msg.message}`);
@@ -82,17 +122,6 @@ window.ttcWatch = (function () {
     };
   }
 
-  function syncTabs() {
-    if (activeSession) {
-      markActiveTab(activeSession);
-      return;
-    }
-    const activeBtn = document.querySelector(".tab.active");
-    const firstBtn = document.querySelector(".tab");
-    const target = activeBtn || firstBtn;
-    if (target) connect(target.dataset.session);
-  }
-
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("tabs")?.addEventListener("click", (event) => {
       const btn = event.target.closest(".tab");
@@ -100,7 +129,9 @@ window.ttcWatch = (function () {
       event.preventDefault();
       connect(btn.dataset.session);
     });
+    refreshTabs();
+    setInterval(refreshTabs, POLL_MS);
   });
 
-  return { syncTabs, connect };
+  return { refreshTabs, connect };
 })();

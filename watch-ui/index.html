@@ -6,20 +6,13 @@
   <title>ttc watch</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
   <link rel="stylesheet" href="/style.css">
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
 </head>
 <body>
   <header>
     <h1>ttc watch</h1>
     <p class="hint">Read-only. Click a tab to switch sessions.</p>
-    <div
-      id="tabs"
-      hx-get="/partials/tabs"
-      hx-trigger="load, every 2s"
-      hx-swap="innerHTML"
-      hx-on::after-swap="window.ttcWatch.syncTabs()"
-    ></div>
+    <div id="tabs"></div>
   </header>
   <main>
     <div id="terminal"></div>

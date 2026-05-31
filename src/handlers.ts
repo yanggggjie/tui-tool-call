@@ -1,24 +1,24 @@
 /**
- * PTY session registry and RPC handlers.
+ * PTY session registry and request handlers.
  */
 import * as path from "path";
 import { Session, validateCwd, validateSessionName } from "./session";
+import { resolveKey } from "./keys";
 import {
   Request,
   Response,
   StartRequest,
-  ScreenRequest,
-  TypeRequest,
+  NowRequest,
+  DoneRequest,
+  TextRequest,
   PressRequest,
   KillRequest,
   ScrollRequest,
-  ScreenResponse,
   SessionInfo,
   ErrorResponse,
+  StartResponse,
 } from "./protocol";
 
-const WAIT_MS = 3000;
-const DEBOUNCE_MS = 100;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 const sessions = new Map<string, Session>();
@@ -59,29 +59,12 @@ function checkSessionNameAvailable(name: string): Response | null {
   return null;
 }
 
-function screenResponse(
-  session: Session,
-  sessionName: string,
-  responseType: ScreenResponse["type"],
-  snap: ReturnType<Session["snapshot"]>
-): ScreenResponse {
-  return {
-    type: responseType,
-    session_name: sessionName,
-    lines: snap.lines,
-    changed: snap.changed,
-    status: session.status,
-    exit_code: session.exitCode,
-    title: snap.title,
-    is_fullscreen: snap.is_fullscreen,
-    cols: session.cols,
-    rows: session.rows,
-  };
+function screenResponse(screen: string): StartResponse {
+  return { type: "screen", screen };
 }
 
-async function doneSnapshot(session: Session): Promise<ReturnType<Session["snapshot"]>> {
-  await session.wait(WAIT_MS, undefined, DEBOUNCE_MS);
-  return session.snapshot();
+async function waitForScreen(session: Session): Promise<string> {
+  return session.wait();
 }
 
 export function listSessions(): SessionInfo[] {
@@ -127,31 +110,34 @@ export async function handleRequest(req: Request): Promise<Response> {
         });
         sessions.set(r.session_name, session);
         resetIdleTimer();
-        const snap = await doneSnapshot(session);
-        return screenResponse(session, r.session_name, "start", snap);
+        return screenResponse(await waitForScreen(session));
       } finally {
         startingSessions.delete(r.session_name);
       }
     }
 
-    case "screen": {
-      const r = req as ScreenRequest;
+    case "now": {
+      const r = req as NowRequest;
       const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      const snap = r.done ? await doneSnapshot(session) : session.snapshot();
-      return screenResponse(session, r.session_name, "screen", snap);
+      return screenResponse((sessionOrError as Session).snapshot());
     }
 
-    case "type": {
-      const r = req as TypeRequest;
+    case "done": {
+      const r = req as DoneRequest;
+      const sessionOrError = getSession(r.session_name);
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      return screenResponse(await waitForScreen(sessionOrError as Session));
+    }
+
+    case "text": {
+      const r = req as TextRequest;
       const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
       try {
-        session.send(r.input);
-        const snap = await doneSnapshot(session);
-        return screenResponse(session, r.session_name, "type", snap);
+        session.send(r.text);
+        return screenResponse(await waitForScreen(session));
       } catch (e: unknown) {
         return { type: "error", message: e instanceof Error ? e.message : String(e) };
       }
@@ -159,13 +145,16 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     case "press": {
       const r = req as PressRequest;
+      const sequence = resolveKey(r.key);
+      if (!sequence) {
+        return { type: "error", message: `Unknown key "${r.key}"` };
+      }
       const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
       try {
-        session.press(r.sequence);
-        const snap = await doneSnapshot(session);
-        return screenResponse(session, r.session_name, "press", snap);
+        session.press(sequence);
+        return screenResponse(await waitForScreen(session));
       } catch (e: unknown) {
         return { type: "error", message: e instanceof Error ? e.message : String(e) };
       }
@@ -190,7 +179,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       const session = sessionOrError as Session;
       session.scroll(r.direction);
-      return screenResponse(session, r.session_name, "scroll", session.snapshot());
+      return screenResponse(session.snapshot());
     }
 
     default:

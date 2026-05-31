@@ -1,86 +1,75 @@
 /**
- * CLI → daemon HTTP client. Auto-starts the daemon if needed.
+ * CLI → server HTTP client. Auto-starts the server if needed.
  */
 import * as fs from "fs";
 import * as path from "path";
 import * as child_process from "child_process";
-import { DAEMON_URL, PID_PATH } from "./daemon";
+import { SERVER_URL } from "./server";
 import { Request, Response } from "./protocol";
 
-const DAEMON_START_TIMEOUT_MS = 3000;
-const DAEMON_POLL_INTERVAL_MS = 100;
+const SERVER_START_TIMEOUT_MS = 3000;
+const SERVER_POLL_INTERVAL_MS = 100;
+const HEALTH_TIMEOUT_MS = 500;
 
 function info(msg: string): void {
   process.stderr.write(`ttc: ${msg}\n`);
 }
 
-export async function ensureDaemonRunning(): Promise<void> {
-  if (!(await isDaemonReachable())) {
-    info("starting daemon...");
-    await startDaemon();
+export async function ensureServerRunning(): Promise<void> {
+  if (!(await isServerReachable())) {
+    info("starting server...");
+    await spawnServer();
   }
 }
 
 export async function sendRequest(req: Request): Promise<Response> {
-  await ensureDaemonRunning();
-  const res = await fetch(`${DAEMON_URL}/rpc`, {
+  await ensureServerRunning();
+  const res = await fetch(`${SERVER_URL}/rpc`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    throw new Error(`Daemon HTTP ${res.status}: ${await res.text()}`);
+    throw new Error(`Server HTTP ${res.status}: ${await res.text()}`);
   }
   return res.json() as Promise<Response>;
 }
 
-async function isDaemonReachable(): Promise<boolean> {
-  if (!isDaemonPidAlive()) return false;
+async function isServerReachable(): Promise<boolean> {
   try {
-    const res = await fetch(`${DAEMON_URL}/health`, { signal: AbortSignal.timeout(500) });
+    const res = await fetch(`${SERVER_URL}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
     return res.ok;
   } catch {
     return false;
   }
 }
 
-function isDaemonPidAlive(): boolean {
-  if (!fs.existsSync(PID_PATH)) return false;
-  try {
-    const pid = parseInt(fs.readFileSync(PID_PATH, "utf-8").trim(), 10);
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function startDaemon(): Promise<void> {
-  const daemonScript = path.join(__dirname, "daemon.js");
-  if (!fs.existsSync(daemonScript)) {
-    throw new Error(`Daemon script not found: ${daemonScript}`);
+async function spawnServer(): Promise<void> {
+  const serverScript = path.join(__dirname, "server.js");
+  if (!fs.existsSync(serverScript)) {
+    throw new Error(`Server script not found: ${serverScript}`);
   }
 
-  const child = child_process.spawn(process.execPath, [daemonScript], {
+  const child = child_process.spawn(process.execPath, [serverScript], {
     detached: true,
     stdio: ["ignore", "ignore", "inherit"],
   });
-  child.on("error", (e) => info(`failed to spawn daemon: ${e.message}`));
+  child.on("error", (e) => info(`failed to spawn server: ${e.message}`));
   child.unref();
 
-  const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
+  const deadline = Date.now() + SERVER_START_TIMEOUT_MS;
   let attempts = 0;
   while (Date.now() < deadline) {
-    await sleep(DAEMON_POLL_INTERVAL_MS);
+    await sleep(SERVER_POLL_INTERVAL_MS);
     attempts++;
-    if (await isDaemonReachable()) {
-      info(`daemon ready (${attempts * DAEMON_POLL_INTERVAL_MS}ms)`);
+    if (await isServerReachable()) {
+      info(`server ready (${attempts * SERVER_POLL_INTERVAL_MS}ms)`);
       return;
     }
   }
 
   throw new Error(
-    `Daemon failed to start after ${DAEMON_START_TIMEOUT_MS}ms\n` +
+    `Server failed to start after ${SERVER_START_TIMEOUT_MS}ms\n` +
       `  Check if port 7654 is in use or see stderr for errors`
   );
 }

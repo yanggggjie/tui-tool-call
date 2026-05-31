@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",
-    "clean": "rm -rf node_modules package-lock.json dist ~/.ttc",
+    "clean": "rm -rf node_modules package-lock.json dist",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build",
     "publish:patch": "npm version patch && npm publish",
@@ -22,14 +22,16 @@
     "start": "node dist/cli.js"
   },
   "dependencies": {
+    "@fastify/static": "^7.0.4",
+    "@fastify/websocket": "^10.0.1",
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "@xterm/headless": "^6.0.0",
     "commander": "^12.0.0",
-    "ws": "^8.18.0"
+    "fastify": "^4.29.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/ws": "^8.5.13",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.0.0"
   },
   "engines": {

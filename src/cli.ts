@@ -4,10 +4,11 @@
  */
 import * as path from "path";
 import { Command } from "commander";
-import { sendRequest } from "./client";
+import { ensureServerRunning, sendRequest } from "./client";
+import { SERVER_URL } from "./server";
 import { validateSessionName } from "./session";
+import { SUPPORTED_KEYS } from "./keys";
 import { Response, ErrorResponse, ScreenResponse } from "./protocol";
-import { runWatchServer } from "./watch-server";
 import { version } from "../package.json";
 
 const program = new Command();
@@ -25,7 +26,6 @@ function exitOnBadSessionName(name: string): void {
   }
 }
 
-// ---- session ----
 program
   .command("start <session-name> <command...>")
   .description("Start a program in a PTY, then print screen when stable")
@@ -69,26 +69,18 @@ program
         console.log("No active sessions");
         return;
       }
-      const nameWidth = Math.max(12, ...r.sessions.map((s) => s.session_name.length));
-      const cmdWidth = Math.max(7, ...r.sessions.map((s) => s.command.length));
-      const header = `${"SESSION".padEnd(nameWidth)}  ${"COMMAND".padEnd(cmdWidth)}  STATUS`;
-      console.log(header);
-      console.log("-".repeat(header.length));
       for (const s of r.sessions) {
-        console.log(
-          `${s.session_name.padEnd(nameWidth)}  ${s.command.padEnd(cmdWidth)}  ${s.status}`
-        );
+        console.log(s.session_name);
       }
     });
   });
 
-// ---- observe (plain text screen only) ----
 program
   .command("now <session-name>")
   .description("Print the current screen")
   .action(async (sessionName: string) => {
     exitOnBadSessionName(sessionName);
-    const res = await sendRequest({ type: "screen", session_name: sessionName, done: false });
+    const res = await sendRequest({ type: "now", session_name: sessionName });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
@@ -97,7 +89,7 @@ program
   .description("Wait until the screen is stable, then print it")
   .action(async (sessionName: string) => {
     exitOnBadSessionName(sessionName);
-    const res = await sendRequest({ type: "screen", session_name: sessionName, done: true });
+    const res = await sendRequest({ type: "done", session_name: sessionName });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
@@ -132,38 +124,15 @@ program
   .description("Scroll to bottom of buffer, then print screen")
   .action(scrollCmd("bottom"));
 
-/** Special key name → escape sequence mapping for `ttc press`. */
-const KEY_MAP: Record<string, string> = {
-  "ctrl+a": "\x01", "ctrl+b": "\x02", "ctrl+c": "\x03", "ctrl+d": "\x04",
-  "ctrl+e": "\x05", "ctrl+f": "\x06", "ctrl+g": "\x07", "ctrl+h": "\x08",
-  "ctrl+i": "\x09", "ctrl+j": "\x0a", "ctrl+k": "\x0b", "ctrl+l": "\x0c",
-  "ctrl+m": "\x0d", "ctrl+n": "\x0e", "ctrl+o": "\x0f", "ctrl+p": "\x10",
-  "ctrl+q": "\x11", "ctrl+r": "\x12", "ctrl+s": "\x13", "ctrl+t": "\x14",
-  "ctrl+u": "\x15", "ctrl+v": "\x16", "ctrl+w": "\x17", "ctrl+x": "\x18",
-  "ctrl+y": "\x19", "ctrl+z": "\x1a",
-  "arrow_up": "\x1b[A", "arrow_down": "\x1b[B",
-  "arrow_right": "\x1b[C", "arrow_left": "\x1b[D",
-  "page_up": "\x1b[5~", "page_down": "\x1b[6~",
-  "home": "\x1b[H", "end": "\x1b[F",
-  "enter": "\r", "tab": "\t", "escape": "\x1b",
-  "backspace": "\x7f", "delete": "\x1b[3~",
-  "f1": "\x1bOP", "f2": "\x1bOQ", "f3": "\x1bOR", "f4": "\x1bOS",
-  "f5": "\x1b[15~", "f6": "\x1b[17~", "f7": "\x1b[18~", "f8": "\x1b[19~",
-  "f9": "\x1b[20~", "f10": "\x1b[21~",
-};
-
-const SUPPORTED_KEYS = Object.keys(KEY_MAP);
-
-// ---- input ----
 program
   .command("type <session-name> <input...>")
   .description("Type text (\\n = Enter, \\t = Tab), then print screen when stable")
   .action(async (sessionName: string, inputParts: string[]) => {
     exitOnBadSessionName(sessionName);
     const res = await sendRequest({
-      type: "type",
+      type: "text",
       session_name: sessionName,
-      input: inputParts.join(" "),
+      text: inputParts.join(" "),
     });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
@@ -173,12 +142,7 @@ program
   .description("Press a key (enter, escape, ctrl+c, arrow_up, …), then print screen when stable")
   .action(async (sessionName: string, key: string) => {
     exitOnBadSessionName(sessionName);
-    const sequence = KEY_MAP[key.toLowerCase()];
-    if (sequence === undefined) {
-      process.stderr.write(`Error: unknown key "${key}". Run \`ttc keys\` to see supported names.\n`);
-      process.exit(1);
-    }
-    const res = await sendRequest({ type: "press", session_name: sessionName, sequence });
+    const res = await sendRequest({ type: "press", session_name: sessionName, key });
     handleResponse(res, (r) => printScreen(r as ScreenResponse));
   });
 
@@ -198,8 +162,8 @@ function scrollCmd(direction: "up" | "down" | "top" | "bottom") {
 }
 
 function printScreen(r: ScreenResponse): void {
-  if (r.lines.length === 0) return;
-  process.stdout.write(r.lines.join("\n") + "\n");
+  if (!r.screen) return;
+  process.stdout.write(r.screen + "\n");
 }
 
 function handleResponse(res: Response, onSuccess: (r: Response) => void): void {
@@ -208,6 +172,32 @@ function handleResponse(res: Response, onSuccess: (r: Response) => void): void {
     process.exit(1);
   }
   onSuccess(res);
+}
+
+async function runWatchServer(): Promise<void> {
+  if (!process.stdout.isTTY) {
+    process.stderr.write(
+      "Error: ttc watch is for human observation only. Agents must not run this command.\n"
+    );
+    process.exit(1);
+  }
+
+  await ensureServerRunning();
+
+  const res = await sendRequest({ type: "list" });
+  if (res.type === "error") {
+    process.stderr.write(`Error: ${res.message}\n`);
+    process.exit(1);
+  }
+
+  process.stderr.write("ttc watch — read-only session observer (Ctrl+C to exit)\n");
+  console.log(SERVER_URL);
+
+  await new Promise<void>((resolve) => {
+    const stop = () => resolve();
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+  });
 }
 
 program.parseAsync(process.argv).catch((err) => {

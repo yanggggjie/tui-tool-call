@@ -22,7 +22,7 @@ dev:
 # Build check
 check: build
 
-# Remove node_modules, lockfile, dist, and ~/.ttc
+# Remove node_modules, lockfile, and dist
 clean:
     npm run clean
 
