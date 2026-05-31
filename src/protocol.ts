@@ -9,40 +9,10 @@ export interface StartRequest {
   cwd: string;
 }
 
-export interface StartResponse {
-  type: "screen";
-  screen: string;
-}
-
-export interface NowRequest {
-  type: "now";
-  session_name: string;
-}
-
-export interface NowResponse {
-  type: "screen";
-  screen: string;
-}
-
-export interface DoneRequest {
-  type: "done";
-  session_name: string;
-}
-
-export interface DoneResponse {
-  type: "screen";
-  screen: string;
-}
-
 export interface TextRequest {
   type: "text";
   session_name: string;
   text: string;
-}
-
-export interface TextResponse {
-  type: "screen";
-  screen: string;
 }
 
 export interface PressRequest {
@@ -51,20 +21,20 @@ export interface PressRequest {
   key: string;
 }
 
-export interface PressResponse {
-  type: "screen";
-  screen: string;
+export interface NowRequest {
+  type: "now";
+  session_name: string;
+}
+
+export interface DoneRequest {
+  type: "done";
+  session_name: string;
 }
 
 export interface ScrollRequest {
   type: "scroll";
   session_name: string;
   direction: "up" | "down" | "top" | "bottom";
-}
-
-export interface ScrollResponse {
-  type: "screen";
-  screen: string;
 }
 
 export interface KillRequest {
@@ -75,6 +45,16 @@ export interface KillRequest {
 export interface KillResponse {
   type: "kill";
   ok: boolean;
+}
+
+export interface KillAllRequest {
+  type: "killall";
+}
+
+export interface KillAllResponse {
+  type: "killall";
+  ok: boolean;
+  count: number;
 }
 
 export interface ListRequest {
@@ -90,6 +70,15 @@ export interface ListResponse {
   sessions: SessionInfo[];
 }
 
+export interface OkResponse {
+  type: "ok";
+}
+
+export interface ScreenResponse {
+  type: "screen";
+  screen: string;
+}
+
 export interface ErrorResponse {
   type: "error";
   message: string;
@@ -97,20 +86,19 @@ export interface ErrorResponse {
 
 export type Request =
   | StartRequest
-  | NowRequest
-  | DoneRequest
   | TextRequest
   | PressRequest
+  | NowRequest
+  | DoneRequest
+  | ScrollRequest
   | KillRequest
-  | ListRequest
-  | ScrollRequest;
+  | KillAllRequest
+  | ListRequest;
 
-export type ScreenResponse =
-  | StartResponse
-  | NowResponse
-  | DoneResponse
-  | TextResponse
-  | PressResponse
-  | ScrollResponse;
-
-export type Response = ScreenResponse | KillResponse | ListResponse | ErrorResponse;
+export type Response =
+  | OkResponse
+  | ScreenResponse
+  | KillResponse
+  | KillAllResponse
+  | ListResponse
+  | ErrorResponse;

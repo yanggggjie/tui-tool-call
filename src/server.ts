@@ -7,7 +7,13 @@ import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import type { WebSocket } from "ws";
 import { Session, SESSION_NAME_PATTERN } from "./session";
-import { armIdleTimer, handleRequest, killAllSessions, resolveSession } from "./handlers";
+import {
+  armIdleTimer,
+  handleRequest,
+  killAllSessions,
+  resolveSession,
+  setShutdownIfEmpty,
+} from "./handlers";
 import { Request } from "./protocol";
 
 const WS_OPEN = 1;
@@ -176,9 +182,13 @@ async function startServer(): Promise<void> {
   function shutdown(): void {
     if (shuttingDown) return;
     shuttingDown = true;
-    killAllSessions();
+    killAllSessions({ fromShutdown: true });
     void app.close().finally(() => process.exit(0));
   }
+
+  setShutdownIfEmpty(() => {
+    setImmediate(() => shutdown());
+  });
 
   for (const sig of ["SIGTERM", "SIGINT"] as const) {
     process.on(sig, shutdown);

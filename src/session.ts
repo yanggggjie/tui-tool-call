@@ -1,7 +1,6 @@
 /**
  * Wraps a PTY process (@homebridge/node-pty-prebuilt-multiarch).
- * Uses @xterm/headless as a VT renderer — PTY output is written into
- * the terminal emulator, and snapshot() reads back plain text.
+ * Uses @xterm/headless as a VT renderer for watch UI streaming.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -155,7 +154,7 @@ export class Session {
     return this.readPlainScreen();
   }
 
-  /** Poll every 100ms; 10 consecutive unchanged reads → done. */
+  /** Poll every 100ms; 10 consecutive unchanged reads → stable. */
   async wait(): Promise<string> {
     if (this._status === "exited") {
       return this.snapshot();
@@ -180,6 +179,28 @@ export class Session {
     return this.snapshot();
   }
 
+  scroll(direction: "up" | "down" | "top" | "bottom"): void {
+    switch (direction) {
+      case "up":
+        this.terminal.scrollLines(-this.terminal.rows);
+        break;
+      case "down":
+        this.terminal.scrollLines(this.terminal.rows);
+        break;
+      case "top": {
+        const buf = this.terminal.buffer.active;
+        this.terminal.scrollLines(-buf.viewportY);
+        break;
+      }
+      case "bottom": {
+        const buf = this.terminal.buffer.active;
+        const target = Math.max(0, buf.length - this.terminal.rows);
+        this.terminal.scrollLines(target - buf.viewportY);
+        break;
+      }
+    }
+  }
+
   kill(): void {
     if (this._status === "running") {
       this.ptyProcess.kill();
@@ -188,48 +209,6 @@ export class Session {
 
   toInfo(): SessionInfo {
     return { session_name: this.name };
-  }
-
-  scrollLines(lines: number): void {
-    this.terminal.scrollLines(lines);
-  }
-
-  scrollUp(lines?: number): void {
-    const n = lines ?? this.terminal.rows;
-    this.scrollLines(-n);
-  }
-
-  scrollDown(lines?: number): void {
-    const n = lines ?? this.terminal.rows;
-    this.scrollLines(n);
-  }
-
-  scrollTop(): void {
-    const buf = this.terminal.buffer.active;
-    this.scrollLines(-buf.viewportY);
-  }
-
-  scrollBottom(): void {
-    const buf = this.terminal.buffer.active;
-    const target = Math.max(0, buf.length - this.terminal.rows);
-    this.scrollLines(target - buf.viewportY);
-  }
-
-  scroll(direction: "up" | "down" | "top" | "bottom"): void {
-    switch (direction) {
-      case "up":
-        this.scrollUp();
-        break;
-      case "down":
-        this.scrollDown();
-        break;
-      case "top":
-        this.scrollTop();
-        break;
-      case "bottom":
-        this.scrollBottom();
-        break;
-    }
   }
 
   private appendOutput(data: string): void {

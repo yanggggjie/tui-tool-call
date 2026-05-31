@@ -12,11 +12,10 @@ import {
   DoneRequest,
   TextRequest,
   PressRequest,
-  KillRequest,
   ScrollRequest,
+  KillRequest,
   SessionInfo,
   ErrorResponse,
-  StartResponse,
 } from "./protocol";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -24,6 +23,20 @@ const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const sessions = new Map<string, Session>();
 const startingSessions = new Set<string>();
 let idleTimer: NodeJS.Timeout | null = null;
+let shutdownIfEmpty: (() => void) | null = null;
+
+export function setShutdownIfEmpty(fn: () => void): void {
+  shutdownIfEmpty = fn;
+}
+
+function maybeShutdownServer(): void {
+  if (sessions.size > 0 || startingSessions.size > 0) return;
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+  shutdownIfEmpty?.();
+}
 
 function resetIdleTimer(): void {
   if (idleTimer) clearTimeout(idleTimer);
@@ -44,7 +57,11 @@ function getSession(name: string): Session | ErrorResponse {
 }
 
 const SESSION_IN_USE_HINT = (name: string) =>
-  `Session "${name}" is already in use. Use a different session name, or run 'ttc kill ${name}' first.`;
+  `Session "${name}" is already in use. Use a different session name, or run 'ttc act kill --sess=${name}' first.`;
+
+function screenResponse(screen: string): Response {
+  return { type: "screen", screen };
+}
 
 function checkSessionNameAvailable(name: string): Response | null {
   if (startingSessions.has(name)) {
@@ -59,14 +76,6 @@ function checkSessionNameAvailable(name: string): Response | null {
   return null;
 }
 
-function screenResponse(screen: string): StartResponse {
-  return { type: "screen", screen };
-}
-
-async function waitForScreen(session: Session): Promise<string> {
-  return session.wait();
-}
-
 export function listSessions(): SessionInfo[] {
   return [...sessions.values()].map((s) => s.toInfo());
 }
@@ -75,13 +84,26 @@ export function resolveSession(name: string): Session | ErrorResponse {
   return getSession(name);
 }
 
-export function killAllSessions(): void {
+export function killAllSessions(options?: { fromShutdown?: boolean }): number {
+  const count = sessions.size;
   for (const session of sessions.values()) {
     try {
       session.kill();
     } catch {
       /* ignore */
     }
+  }
+  sessions.clear();
+  startingSessions.clear();
+  if (!options?.fromShutdown) maybeShutdownServer();
+  return count;
+}
+
+function afterSessionRemoved(): void {
+  if (sessions.size === 0 && startingSessions.size === 0) {
+    maybeShutdownServer();
+  } else {
+    resetIdleTimer();
   }
 }
 
@@ -110,7 +132,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         });
         sessions.set(r.session_name, session);
         resetIdleTimer();
-        return screenResponse(await waitForScreen(session));
+        return { type: "ok" };
       } finally {
         startingSessions.delete(r.session_name);
       }
@@ -127,7 +149,16 @@ export async function handleRequest(req: Request): Promise<Response> {
       const r = req as DoneRequest;
       const sessionOrError = getSession(r.session_name);
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      return screenResponse(await waitForScreen(sessionOrError as Session));
+      return screenResponse(await (sessionOrError as Session).wait());
+    }
+
+    case "scroll": {
+      const r = req as ScrollRequest;
+      const sessionOrError = getSession(r.session_name);
+      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
+      const session = sessionOrError as Session;
+      session.scroll(r.direction);
+      return screenResponse(session.snapshot());
     }
 
     case "text": {
@@ -137,7 +168,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       const session = sessionOrError as Session;
       try {
         session.send(r.text);
-        return screenResponse(await waitForScreen(session));
+        return { type: "ok" };
       } catch (e: unknown) {
         return { type: "error", message: e instanceof Error ? e.message : String(e) };
       }
@@ -154,7 +185,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       const session = sessionOrError as Session;
       try {
         session.press(sequence);
-        return screenResponse(await waitForScreen(session));
+        return { type: "ok" };
       } catch (e: unknown) {
         return { type: "error", message: e instanceof Error ? e.message : String(e) };
       }
@@ -166,21 +197,15 @@ export async function handleRequest(req: Request): Promise<Response> {
       if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
       (sessionOrError as Session).kill();
       sessions.delete(r.session_name);
-      resetIdleTimer();
+      afterSessionRemoved();
       return { type: "kill", ok: true };
     }
 
+    case "killall":
+      return { type: "killall", ok: true, count: killAllSessions() };
+
     case "list":
       return { type: "list", sessions: listSessions() };
-
-    case "scroll": {
-      const r = req as ScrollRequest;
-      const sessionOrError = getSession(r.session_name);
-      if ("type" in sessionOrError && sessionOrError.type === "error") return sessionOrError;
-      const session = sessionOrError as Session;
-      session.scroll(r.direction);
-      return screenResponse(session.snapshot());
-    }
 
     default:
       return { type: "error", message: "Unknown request type" };
